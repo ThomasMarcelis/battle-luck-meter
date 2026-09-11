@@ -3,9 +3,27 @@
     rand = function( ... ) { throw "Math.rand consumed by xBro"; }};
 ::Errors <- [];
 ::logError <- function( _text ) { ::Errors.push(_text); };
+::Logs <- [];
+::logInfo <- function( _text ) { ::Logs.push(_text); };
 
 function check( _value, _message ) { if (!_value) throw _message; }
 function near( _a, _b, _tolerance ) { return _a - _b < _tolerance && _b - _a < _tolerance; }
+
+// key=value pairs of one log line; double-quoted values may contain spaces.
+function fields( _line )
+{
+    local out = {}, re = regexp("([a-z_]+)=(\"[^\"]*\"|[^ ]+)"), at = 0;
+    while (true)
+    {
+        local m = re.capture(_line, at);
+        if (m == null) break;
+        local value = _line.slice(m[2].begin, m[2].end);
+        if (value[0] == '"') value = value.slice(1, value.len() - 1);
+        out[_line.slice(m[1].begin, m[1].end)] <- value;
+        at = m[0].end;
+    }
+    return out;
+}
 
 // Settings double: XBro reads Enabled/MinAttacks through Mod.ModSettings at use time.
 function settings( _values = null )
@@ -30,6 +48,7 @@ function tile( _distance ) { return {distance = _distance, getDistanceTo = funct
 function actor( _faction, _distance = 1 )
 {
     return {faction = _faction, alive = true, attackable = true, ableToDie = true, hp = 50, tileRef = tile(_distance),
+        name = _faction == 1 ? "Our Bro" : "Foe " + _faction, getName = function() { return this.name; },
         getFaction = function() { return this.faction; }, isAlive = function() { return this.alive; },
         isAttackable = function() { return this.attackable; }, isAbleToDie = function() { return this.ableToDie; },
         getHitpoints = function() { return this.hp; }, isPlayerControlled = function() { return this.faction == 1; },
@@ -40,7 +59,7 @@ function actor( _faction, _distance = 1 )
 function skill( _chance, _ranged = false, _projectile = false )
 {
     return {m = {IsShowingProjectile = _projectile}, chance = _chance, ranged = _ranged, hitchance = true, priced = 0,
-        isUsingHitchance = function() { return this.hitchance; }, isRanged = function() { return this.ranged; },
+        name = _ranged ? "Quick Shot" : "Slash", getName = function() { return this.name; }, isUsingHitchance = function() { return this.hitchance; }, isRanged = function() { return this.ranged; },
         getHitchance = function( _target ) { this.priced++; return this.chance; }};
 }
 

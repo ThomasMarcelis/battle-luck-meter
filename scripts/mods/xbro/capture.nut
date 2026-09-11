@@ -18,17 +18,26 @@
         if (_allowDiversion && userTile.getDistanceTo(targetTile) > 1
             && ::Const.Tactical.Common.getBlockedTiles(userTile, targetTile, _user.getFaction()).len() != 0) return null;
     }
-    local chance = _skill.getHitchance(_target);
+    local chance = _skill.getHitchance(_target), shifted = chance;
     if (("Assets" in ::World) && ::World.Assets != null && ::World.Assets.getCombatDifficulty() == 0)
     {
-        if (_user.isPlayerControlled()) chance += 5;
-        else if (_target.isPlayerControlled()) chance -= 5;
+        if (_user.isPlayerControlled()) shifted += 5;
+        else if (_target.isPlayerControlled()) shifted -= 5;
     }
-    local p = ::Math.minf(1.0, ::Math.maxf(0.0, chance / 100.0));
+    local p = ::Math.minf(1.0, ::Math.maxf(0.0, shifted / 100.0));
     // Lucky trait: a hit is rerolled with RerollDefenseChance percent, and must hit again.
     local reroll = _target.getCurrentProperties().RerollDefenseChance / 100.0;
     if (reroll > 0.0) p = p - p * reroll * (1.0 - p);
-    return {side = ours ? "ours" : "theirs", p = p};
+    // chance and the names are for the log only; the meter uses side and p.
+    return {side = ours ? "ours" : "theirs", p = p, chance = chance,
+        skill = this.name(_skill), by = this.name(_user), on = this.name(_target)};
+};
+
+// A name is log decoration; failing to read one must not drop the attack from the meter.
+::XBro.name <- function( _entity )
+{
+    try { return _entity.getName(); }
+    catch (error) { return "?"; }
 };
 
 // Called before the native attack; never lets a failure reach it.
@@ -39,9 +48,29 @@
     return null;
 };
 
-// Called with the native attack's result.
+// Called with the native attack's result. The log line is written after the push so that
+// neither can suppress the other.
 ::XBro.settle <- function( _trial, _hit )
 {
-    try { this.record(_trial.side, _trial.p, _hit == true); this.push(); }
+    local hit = _hit == true;
+    try { this.record(_trial.side, _trial.p, hit); this.push(); }
     catch (error) { ::logError(this.Name + " update failed: " + error); }
+    try
+    {
+        this.log("battle=" + this.Battle.id + " attack=" + (this.Battle.ours.n + this.Battle.theirs.n)
+            + " side=" + _trial.side + " hit=" + (hit ? 1 : 0) + " chance=" + _trial.chance + ::format(" p=%.6f", _trial.p)
+            + " skill=\"" + _trial.skill + "\" by=\"" + _trial.by + "\" on=\"" + _trial.on + "\"");
+    }
+    catch (error) { ::logError(this.Name + " log failed: " + error); }
+};
+
+// Called when the battle ends: the tooltip's numbers, written down next to the attack lines.
+::XBro.finish <- function()
+{
+    local min = this.minAttacks(), s = this.summary(min);
+    local side = @(_label, _side) " " + _label + "_n=" + _side.n + " " + _label + "_hits=" + _side.hits
+        + ::format(" %s_expected=%.3f", _label, _side.expected);
+    this.log("battle=" + this.Battle.id + " event=end" + side("ours", s.ours) + side("theirs", s.theirs)
+        + ::format(" z=%.3f", s.z) + " rank=" + s.rank + " pending=" + (s.pending ? 1 : 0)
+        + " min_attacks=" + min + " text=\"" + s.text + "\"");
 };

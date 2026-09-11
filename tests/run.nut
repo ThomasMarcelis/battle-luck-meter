@@ -4,7 +4,7 @@ try
     foreach (file in ["core", "stats", "capture", "ui"]) dofile("scripts/mods/xbro/" + file + ".nut");
     loadfile("scripts/!mods_preload/mod_xbro.nut");
     local count = 0;
-    foreach (file in ["stats", "capture", "lifecycle"])
+    foreach (file in ["stats", "capture", "lifecycle", "logging"])
     {
         local cases = dofile("tests/" + file + ".nut"), names = [];
         foreach (name, test in cases) names.push(name);
@@ -14,6 +14,7 @@ try
             local globals = clone getroottable(), api = clone ::XBro, math = clone ::Math;
             ::Errors.clear();
             ::XBro.reset();
+            ::Logs.clear();
             try { cases[name](); }
             catch (e) { throw file + "/" + name + ": " + e; }
             local added = [];

@@ -97,7 +97,7 @@ cases.capture_failures_are_logged_not_thrown <- function()
     check(X.price(broken, actor(1), actor(2), true) == null, "failed pricing yields no trial");
     check(::Errors.len() == 1 && ::Errors[0].find("pricing exploded") != null, "failure logged");
     X.push = function() { throw "push exploded"; };
-    X.settle({side = "ours", p = 0.7}, true);
+    X.settle(X.price(skill(70), actor(1), actor(2), true), true);
     check(X.Battle.ours.n == 1 && ::Errors.len() == 2, "attack recorded before the push failed, failure logged");
 };
 

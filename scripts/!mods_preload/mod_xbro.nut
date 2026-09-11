@@ -18,8 +18,13 @@
     });
     ::XBro.Hooks.hook("scripts/states/tactical_state", function(q) {
         q.onInit = @(__original) function() {
-            try { ::XBro.reset(); }
+            try { ::XBro.begin(); }
             catch (error) { ::logError(::XBro.Name + " reset failed: " + error); }
+            return __original();
+        };
+        q.onBattleEnded = @(__original) function() {
+            try { ::XBro.finish(); }
+            catch (error) { ::logError(::XBro.Name + " summary failed: " + error); }
             return __original();
         };
     });

@@ -93,10 +93,20 @@ try
     test("battle_lifecycle_resets_and_topbar_pushes", function() {
         world();
         X.record("ours", 0.5, true);
-        local inits = 0, q = {onInit = null};
+        local inits = 0, ends = 0, q = {onInit = null, onBattleEnded = null};
         hooks["scripts/states/tactical_state"](q);
         local onInit = q.onInit(function() { inits++; check(X.Battle.ours.n == 0, "reset before native init"); return "ready"; });
+        local battle = X.Battle.id;
         check(onInit() == "ready" && inits == 1, "native init runs and returns");
+        check(X.Battle.id == battle + 1 && fields(::Logs.top()).event == "start", "init opens the next battle in the log");
+        X.record("theirs", 0.5, true);
+        local onEnd = q.onBattleEnded(function() { ends++; check(fields(::Logs.top()).event == "end", "summary before native end"); return "done"; });
+        check(onEnd() == "done" && ends == 1 && fields(::Logs.top()).theirs_hits == "1", "native end runs after the summary line");
+        ::logInfo = function( _text ) { throw "log.html on fire"; };
+        check(onInit() == "ready" && onEnd() == "done" && inits == 2 && ends == 2, "native init and end survive a failing log");
+        check(::Errors.len() == 2 && ::Errors[0].find("reset failed") != null && ::Errors[1].find("summary failed") != null, "failures reported");
+        ::Errors.clear();
+        ::logInfo = function( _text ) { ::Logs.push(_text); };
 
         local sent = [], updates = 0;
         local module = {m = {JSHandle = {asyncCall = function( _method, _data ) { sent.push([_method, _data]); }}}, connected = false,

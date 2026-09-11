@@ -22,6 +22,25 @@ side with hits above expectation on theirs, scaled by the combined variance (a P
 reports where that lands among battles. It says nothing until enough attacks are in, and reads `Even` while the
 difference is within half a standard deviation.
 
+## Battle log
+
+Everything the meter counts is also written to the game's own log, `Documents/Battle Brothers/log.html`, so a
+verdict can be checked after the fact. Open the file in a browser and search for `[xBro]`, or extract the
+entries with `grep -o '\[xBro\][^<]*' log.html`. Each entry holds `key=value` pairs:
+
+```
+[xBro] battle=3 event=start version=0.2.0
+[xBro] battle=3 attack=1 side=ours hit=1 chance=82 p=0.820000 skill="Slash" by="Gunnar" on="Brigand Raider"
+[xBro] battle=3 attack=2 side=theirs hit=0 chance=35 p=0.350000 skill="Thrust" by="Brigand Raider" on="Gunnar"
+[xBro] battle=3 event=end ours_n=13 ours_hits=6 ours_expected=7.900 theirs_n=14 theirs_hits=8 theirs_expected=7.300 z=-1.031 rank=84 pending=0 min_attacks=8 text="Unlucky 84%"
+```
+
+`chance` is the engine's own hit chance for that attack; `p` is the probability the meter used after the
+beginner-difficulty shift and the Lucky reroll. Battles are numbered per game session, and the log is
+overwritten when the game restarts, so copy it before launching again. In this repository,
+`python3 tools/audit.py --attacks log.html` lists every attack, rebuilds each battle from those entries alone,
+and reports whether the mod's own end line agrees.
+
 ## What it deliberately does not measure
 
 - Damage, injuries, morale checks, or anything other than hit or miss.
@@ -31,7 +50,7 @@ difference is within half a standard deviation.
   chance rolled.
 - Attacks by or against anyone outside your company: war dogs, allied troops, fights between other factions,
   and friendly fire.
-- Anything outside the current battle. The meter resets every fight.
+- Anything outside the current battle. The meter resets every fight; the log keeps every fight.
 
 ## Limits
 

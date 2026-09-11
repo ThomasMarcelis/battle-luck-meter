@@ -13,6 +13,7 @@ outputs/
 active-design.md
 agent-status.md
 handoff-context.md
+HANDOFF-*.md
 implementation-plan.md
 planning-evidence.md
 questions.md
