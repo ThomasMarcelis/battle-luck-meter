@@ -2,7 +2,7 @@
 try
 {
     dofile("tests/fixtures.nut");
-    ::MSU <- {Class = {}, System = {}, SystemID = {ModSettings = "ModSettings", Tooltips = "Tooltips"},
+    ::MSU <- {Class = {}, System = {}, UI = {JSConnection = {}}, SystemID = {ModSettings = "ModSettings", Tooltips = "Tooltips"},
         requireTable = function( v ) { if (typeof v != "table") throw "Expected table"; },
         requireFunction = function( v ) { if (typeof v != "function") throw "Expected function"; },
         requireOneFromTypes = function( types, ... ) { foreach (v in vargv) if (types.find(typeof v) == null) throw "Unexpected type"; },
@@ -45,20 +45,24 @@ try
         check(registration.id == "mod_xbro" && registration.version == X.Version && registration.name == X.Name, "registration identity");
         check(required.len() == 2 && required[0] == "mod_msu >= 1.9.0" && required[1] == "mod_modern_hooks >= 0.6.0", "requirements");
         check(js.len() == 1 && js[0] == "ui/mods/xbro/xbro.js" && css.len() == 1 && css[0] == "ui/mods/xbro/xbro.css", "ui registration");
+        local receipt = "[xBroUI] schema=3 ui_seq=1 battle=0 event=ui";
+        local seq = X.Sequence;
+        ::MSU.UI.JSConnection.xbroLog(receipt);
+        check(::Logs.top() == receipt && X.Sequence == seq, "MSU callback writes browser evidence without changing Squirrel sequence");
         foreach (path in ["scripts/skills/skill", "scripts/states/tactical_state",
-            "scripts/ui/screens/tactical/modules/topbar/tactical_screen_topbar_round_information"]) check(path in hooks, "hook missing: " + path);
-        check(hooks.len() == 3, "exactly three hooks");
+            "scripts/ui/screens/tactical/modules/topbar/tactical_screen_topbar_round_information",
+            "scripts/ui/screens/tactical/tactical_combat_result_screen"]) check(path in hooks, "hook missing: " + path);
     });
 
     test("settings_defaults_and_native_update", function() {
         local panel = system.getUIData()[X.ID];
         check(panel.name == X.Name && !panel.hidden && panel.pages.len() == 1, "settings page");
         local page = panel.pages[0].settings;
-        check(page.len() == 2 && page[0].id == "Enabled" && page[1].id == "MinAttacks", "two settings");
-        check(page[1].min == 4 && page[1].max == 30 && page[1].step == 1, "range bounds");
-        check(X.enabled() == true && X.minAttacks() == 8 && writes == 0, "defaults without disk writes");
-        system.updateSettingsFromJS({[X.ID] = {MinAttacks = {type = "Range", value = 12}}});
-        check(X.minAttacks() == 12 && writes == 1 && ::Errors.len() == 0, "range update applied and persisted outside a battle");
+        check(page.len() == 1 && page[0].id == "Enabled", "only visibility is configurable");
+        check(X.enabled() == true && writes == 0, "defaults without disk writes");
+        system.updateSettingsFromJS({[X.ID] = {Enabled = {type = "bool", value = false}}});
+        check(!X.enabled() && writes == 1 && ::Errors.len() == 0, "visibility persists outside a battle");
+        system.updateSettingsFromJS({[X.ID] = {Enabled = {type = "bool", value = true}}});
         world();
         local live = {pushed = [], isNull = @() false, xbroPush = function( _data ) { this.pushed.push(_data); }};
         ::Tactical.TopbarRoundInformation = live;
@@ -68,11 +72,22 @@ try
         check(live.pushed.len() == 2 && live.pushed[1].enabled, "re-enabling pushes again");
     });
 
+    test("old_minimum_setting_is_ignored_on_upgrade", function() {
+        local previous = disk.ModSettings, oldWrites = writes;
+        disk.ModSettings = {[X.ID] = {Enabled = true, MinAttacks = 30}};
+        system.importPersistentSettings();
+        check(X.enabled() && !system.getPanel(X.ID).hasSetting("MinAttacks"), "old gate is not registered");
+        X.reset(); X.record("ours", 0.95, false);
+        check(X.state().ours_percent == "-100%" && near(X.state().marker, 45.5, 0.0001), "old threshold cannot hide first attack");
+        check(writes == oldWrites && disk.ModSettings[X.ID].MinAttacks == 30, "import leaves stored settings untouched");
+        disk.ModSettings = previous; X.reset();
+    });
+
     test("msu_tooltip_dispatch_is_dynamic", function() {
         local rows = ::MSU.System.Tooltips.getTooltip(X.ID, "Luck").getUIData({contentType = "msu-generic", modId = X.ID, elementId = "Luck"});
-        check(rows.len() == 4 && rows[0].text == "Luck" && rows[3].text == "Needs 12 attacks (0 so far)", "empty tooltip");
+        check(rows.len() == 7 && rows[5].text == "No attacks recorded.", "empty tooltip");
         X.record("ours", 0.5, true);
-        check(::MSU.System.Tooltips.getTooltip(X.ID, "Luck").getUIData({})[1].text == "You: 1/1 hit, 0.5 expected", "tooltip reads live state");
+        check(::MSU.System.Tooltips.getTooltip(X.ID, "Luck").getUIData({})[1].text == "You: 1/1 hit, 0.50 expected. 100% more hits than expected.", "tooltip reads live state");
         X.reset();
     });
 
@@ -93,7 +108,7 @@ try
     test("battle_lifecycle_resets_and_topbar_pushes", function() {
         world();
         X.record("ours", 0.5, true);
-        local inits = 0, ends = 0, q = {onInit = null, onBattleEnded = null};
+        local inits = 0, ends = 0, q = {onInit = null, onBattleEnded = null, onFinish = null};
         hooks["scripts/states/tactical_state"](q);
         local onInit = q.onInit(function() { inits++; check(X.Battle.ours.n == 0, "reset before native init"); return "ready"; });
         local battle = X.Battle.id;
@@ -104,7 +119,7 @@ try
         check(onEnd() == "done" && ends == 1 && fields(::Logs.top()).theirs_hits == "1", "native end runs after the summary line");
         ::logInfo = function( _text ) { throw "log.html on fire"; };
         check(onInit() == "ready" && onEnd() == "done" && inits == 2 && ends == 2, "native init and end survive a failing log");
-        check(::Errors.len() == 2 && ::Errors[0].find("reset failed") != null && ::Errors[1].find("summary failed") != null, "failures reported");
+        check(::Errors.len() == 2 && ::Errors[0].find("phase=\"log\"") != null && ::Errors[1].find("phase=\"log\"") != null, "failures reported");
         ::Errors.clear();
         ::logInfo = function( _text ) { ::Logs.push(_text); };
 
@@ -120,9 +135,32 @@ try
         check(updates == 1 && sent.len() == 0, "disconnected module updates natively but pushes nothing");
         module.connected = true;
         module.update();
-        check(updates == 2 && sent.len() == 1 && sent[0][0] == "xbroUpdate" && sent[0][1].pending, "native update then push");
+        check(updates == 2 && sent.len() == 1 && sent[0][0] == "xbroUpdate" && sent[0][1].theirs_percent == "—", "native update then push");
+        X.begin();
         X.settle(X.price(skill(70), actor(1), actor(2), true), true);
-        check(sent.len() == 2 && sent[1][1].pending && ::Errors.len() == 0, "each recorded attack pushes");
+        check(sent.len() == 2 && sent[1][1].ours_percent == "+43%" && ::Errors.len() == 0, "each recorded attack pushes");
+    });
+
+    test("results_hook_preserves_native_data_for_every_outcome_and_failures", function() {
+        X.finish();
+        local q = {queryData = null}, calls = 0;
+        hooks["scripts/ui/screens/tactical/tactical_combat_result_screen"](q);
+        foreach (outcome in ["win", "loose", "retreat"])
+        {
+            local native = {combatInformation = {result = outcome}, statistics = [1, 2, 3], stash = [], foundLoot = []};
+            local screen = {data = native};
+            screen.queryData <- q.queryData(function() { calls++; return this.data; }).bindenv(screen);
+            local result = screen.queryData();
+            check(result == native && result.combatInformation.result == outcome && result.statistics.len() == 3, "native result preserved");
+            check(result.xbroLuck.ours_percent == "+43%", "luck added for " + outcome);
+        }
+        check(calls == 3, "native query called once per outcome");
+        local resultState = X.resultState;
+        X.resultState = function() { throw "missing results"; };
+        local native = {statistics = []};
+        check(q.queryData(function() { return native; })() == native, "mod failure preserves native payload");
+        X.resultState = resultState;
+        check(::Errors.top().find("missing results") != null, "failure logged");
     });
 
     print("XBRO_TESTS_PASSED " + count + "\n");

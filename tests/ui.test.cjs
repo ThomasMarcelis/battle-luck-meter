@@ -12,8 +12,10 @@ class Node {
     }
     appendTo(parent) { parent.children.push(this); this.parent = parent; return this; }
     css(key, value) { this.style[key] = value; return this; }
+    get() { return this; }
+    hasClass(name) { return this.classes.has(name); }
     toggleClass(name, on) { on ? this.classes.add(name) : this.classes.delete(name); return this; }
-    text(value) { this.content = value; return this; }
+    text(value) { if (arguments.length === 0) return this.content; this.content = value; return this; }
     bindTooltip(data) { this.tooltip = data; return this; }
     unbindTooltip() { this.tooltip = null; return this; }
     trigger(name) { this.events.push(name); return this; }
@@ -21,44 +23,66 @@ class Node {
 }
 
 function session() {
-    const errors = [];
-    function Module() { this.mContainer = null; }
+    const errors = [], receipts = [];
+    const connection = {mSQHandle: 'msu-session', isConnected() { return this.mSQHandle !== null; }};
+    function Module() { this.mContainer = null; this.mSQHandle = "topbar"; }
     Module.prototype.createDIV = function (parent) { this.mContainer = new Node('<div class="topbar-round-information-module"/>').appendTo(parent); };
     Module.prototype.destroyDIV = function () { this.mContainer.remove(); this.mContainer = null; };
     const context = vm.createContext({TacticalScreenTopbarRoundInformationModule: Module, $: markup => new Node(markup),
-        console: {error: message => errors.push(message)}, Math});
+        Screens: {MSUConnection: connection}, SQ: {call: (handle, method, message) => {
+            assert.equal(handle, 'msu-session');
+            assert.equal(method, 'xbroLog');
+            const data = {};
+            for (const match of message.matchAll(/([a-z_]+)=("[^"]*"|\S+)/g)) {
+                const value = match[2];
+                data[match[1]] = value[0] === '"' ? decodeURIComponent(value.slice(1,-1)) : Number(value);
+            }
+            receipts.push(data);
+        }}, console: {log: () => { throw new Error('console output is not persisted'); }, error: message => errors.push(message)}, Math});
     vm.runInContext(readFileSync(require.resolve('../ui/mods/xbro/xbro.js'), 'utf8'), context);
     const module = new Module(), parent = new Node('<div class="middle-module-container"/>');
     module.createDIV(parent);
-    return {module, parent, errors, root: () => module.mContainer.children[0]};
+    const update = module.xbroUpdate;
+    let pushes = 0;
+    module.xbroUpdate = data => update.call(module, data ? {battle: 1, push: ++pushes, surface: 'battle', ...data} : data);
+    return {module, parent, errors, receipts, connection, root: () => module.mContainer.children[0]};
 }
 
-test('create adds one tooltip-bound bar in the pending state inside the native container', () => {
+test('create binds a tooltip and stays hidden until a push', () => {
     const s = session(), root = s.root();
     assert.equal(s.module.mContainer.children.length, 1);
-    assert.ok(root.classes.has('xbro-pending'));
     assert.equal(root.style.display, 'none', 'hidden until Squirrel pushes');
     assert.deepEqual({...root.tooltip}, {contentType: 'msu-generic', modId: 'mod_xbro', elementId: 'Luck'});
     assert.deepEqual(s.errors, []);
 });
 
-test('update renders offset, text, pending and enabled exactly as pushed', () => {
-    const s = session(), root = s.root(), marker = root.children[0].children[0], label = root.children[1];
-    s.module.xbroUpdate({enabled: true, pending: false, offset: 0.6, text: 'Lucky 93%'});
-    assert.equal(marker.style.left, '20%');
-    assert.equal(label.content, 'Lucky 93%');
-    assert.ok(!root.classes.has('xbro-pending'));
-    assert.equal(root.style.display, '');
-    s.module.xbroUpdate({enabled: true, pending: false, offset: -0.6, text: 'Unlucky 93%'});
-    assert.equal(marker.style.left, '80%');
-    s.module.xbroUpdate({enabled: false, pending: true, offset: 0, text: ''});
-    assert.equal(root.style.display, 'none');
-    assert.ok(root.classes.has('xbro-pending'));
-    assert.equal(label.content, '');
-    s.module.xbroUpdate({enabled: true, pending: false, offset: 1, text: 'Lucky 99%'});
-    assert.equal(marker.style.left, '0%');
+const initial = {enabled: true, marker: 50, emphasis: 0.5, ours_percent: '—', theirs_percent: '—', ours_tone: 'neutral', theirs_tone: 'neutral'};
+
+test('renders immediate percentages, colour changes and marker values exactly as pushed', () => {
+    const s = session(), view = s.module.xbroView;
+    s.module.xbroUpdate(initial);
+    assert.equal(view.oursPercent.text(), '—');
+    assert.equal(view.marker.style.left, '50%');
+    s.module.xbroUpdate({...initial, marker: 45.5, emphasis: 0.55, ours_percent: '-100%', ours_tone: 'bad'});
+    assert.equal(view.marker.style.left, '45.5%');
+    assert.equal(view.track.style.opacity, 0.55);
+    assert.equal(view.oursPercent.text(), '-100%');
+    assert.ok(view.oursPercent.hasClass('xbro-bad'));
+    assert.equal(view.root.style.display, '');
+    s.module.xbroUpdate({...initial, marker: 100, emphasis: 1, ours_percent: '+1900%', ours_tone: 'good', theirs_percent: '+10%', theirs_tone: 'bad'});
+    assert.equal(view.marker.style.left, '100%');
+    assert.equal(view.track.style.opacity, 1);
+    assert.equal(view.oursPercent.text(), '+1900%');
+    assert.ok(view.oursPercent.hasClass('xbro-good'));
+    assert.ok(!view.oursPercent.hasClass('xbro-bad'));
+    assert.ok(view.theirsPercent.hasClass('xbro-bad'));
+    s.module.xbroUpdate({...initial, enabled: false, marker: 0, ours_percent: '0%'});
+    assert.equal(view.marker.style.left, '0%');
+    assert.equal(view.root.style.display, 'none');
+    assert.equal(view.oursPercent.text(), '0%');
+    assert.ok(!view.oursPercent.hasClass('xbro-good') && !view.oursPercent.hasClass('xbro-bad'));
     s.module.xbroUpdate(null);
-    assert.equal(marker.style.left, '0%', 'null push is ignored');
+    assert.equal(view.marker.style.left, '0%', 'null push is ignored');
     assert.deepEqual(s.errors, []);
 });
 
@@ -70,7 +94,7 @@ test('destroy unbinds the tooltip, removes the bar, and native teardown always r
     assert.equal(root.parent, null);
     assert.equal(s.module.mContainer, null);
     assert.equal(s.module.xbroView, null);
-    s.module.xbroUpdate({enabled: true, pending: false, offset: 0.5, text: 'late'});
+    s.module.xbroUpdate(initial);
     assert.deepEqual(s.errors, []);
     const t = session();
     t.root().unbindTooltip = () => { throw new Error('tooltip gone'); };
@@ -78,4 +102,26 @@ test('destroy unbinds the tooltip, removes the bar, and native teardown always r
     assert.equal(t.module.mContainer, null);
     assert.equal(t.errors.length, 1);
     assert.match(t.errors[0], /tooltip gone/);
+});
+
+
+test('reports actual rendered fields and destroy, rejects stale or late updates', () => {
+    const s = session();
+    s.module.xbroUpdate({...initial, battle: 2, push: 10, marker: 55, emphasis: 0.6, ours_percent: '+100%', ours_tone: 'good'});
+    const receipt = s.receipts.at(-1);
+    assert.deepEqual(receipt, {schema: 3, ui_seq: 1, battle: 2, event: NaN, origin_battle: 2, push: 10, view: 1, status: 'rendered', surface: 'battle',
+        ours_percent: '+100%', theirs_percent: '—', ours_tone: 'good', theirs_tone: 'neutral', emphasis: 0.6, left: '55%', display: ''});
+    s.module.xbroUpdate({...initial, battle: 1, push: 9, enabled: false});
+    assert.equal(s.receipts.at(-1).status, 'stale');
+    assert.equal(s.module.xbroView.oursPercent.text(), '+100%');
+    s.module.mSQHandle = null; // The native screen disconnects first.
+    s.module.destroyDIV();
+    assert.equal(s.receipts.at(-1).status, 'destroyed');
+    s.module.xbroUpdate({...initial, battle: 2, push: 11});
+    assert.equal(s.receipts.at(-1).status, 'missing_view');
+    assert.deepEqual(s.errors, []);
+    s.connection.mSQHandle = null;
+    assert.doesNotThrow(() => s.module.xbroUpdate({...initial, battle: 2, push: 12}));
+    assert.equal(s.receipts.at(-1).push, 11, 'disconnected journal does not fabricate a receipt');
+    assert.match(s.errors.at(-1), /journal connection unavailable/);
 });

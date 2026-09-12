@@ -45,18 +45,8 @@ for runner in runners:
             sys.exit(1)
         print(f'{runner.name} {suite}: {passed[1]} passed', flush=True)
 
-# The audit tool must rebuild every finished battle from the lines the mod actually writes.
-sample = subprocess.run([str(runners[0]), 'tests/sample.nut'], cwd=ROOT, text=True, capture_output=True)
-audit = subprocess.run([sys.executable, 'tools/audit.py', '-'], cwd=ROOT, input=sample.stdout, text=True, capture_output=True)
-tampered = sample.stdout.replace('ours_hits=6', 'ours_hits=7', 1).replace('text="Even"', 'text="Lucky 65%"', 1)
-assert tampered != sample.stdout
-denied = subprocess.run([sys.executable, 'tools/audit.py', '-'], cwd=ROOT, input=tampered, text=True, capture_output=True)
-if sample.returncode or sample.stderr or audit.returncode or '2 match, 1 unfinished, 0 mismatch' not in audit.stdout \
-        or denied.returncode != 1 or '0 match, 1 unfinished, 2 mismatch' not in denied.stdout:
-    print(sample.stdout + audit.stdout + denied.stdout, end='')
-    print(sample.stderr + audit.stderr + denied.stderr, end='', file=sys.stderr)
-    sys.exit(1)
-print(f'tools/audit.py tests/sample.nut: {audit.stdout.splitlines()[-1]}; tampered end lines rejected', flush=True)
+# End-to-end replay and damaged-evidence cases use the actual Squirrel emitter.
+subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'audit_test.py'], cwd=ROOT, check=True)
 
 js_tests = sorted((ROOT / 'tests').glob('*.test.cjs'))
 subprocess.run(['node', '--test', '--test-reporter=spec', *map(str, js_tests)], cwd=ROOT, check=True)

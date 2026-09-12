@@ -1,26 +1,68 @@
 ::XBro <- {
-    ID = "mod_xbro", Name = "xBro", Version = "0.2.0",
-    Battles = 0, Battle = null
+    ID = "mod_xbro", Name = "xBro", Version = "0.3.1",
+    Battles = 0, Battle = null, Sequence = 0, Pushes = 0
 };
 
-// One Poisson-binomial sample: n trials, observed hits, sum of p and of p(1-p).
 ::XBro.newSide <- @() {n = 0, hits = 0, sumP = 0.0, sumPQ = 0.0};
 
-// Audit trail in Documents/Battle Brothers/log.html: one "[xBro] key=value ..." entry per event.
-// The file is HTML, so entries must not contain angle brackets; strings with spaces are double-quoted.
-::XBro.log <- @(_text) ::logInfo("[xBro] " + _text);
+// Strings remain readable and single-line in log.html. Percent escapes are decoded
+// exactly once by the auditor, after fields have been parsed (including UTF-8 bytes).
+::XBro.quote <- function( _value )
+{
+    local out = "\"";
+    foreach (c in _value.tostring())
+    {
+        if (c < 32 || c >= 127 || c == '%' || c == '"' || c == '\\' || c == '<' || c == '>' || c == '&')
+            out += ::format("%%%02X", c & 255);
+        else out += c.tochar();
+    }
+    return out + "\"";
+};
 
-// "ours" = attacks by the player's faction; "theirs" = attacks against it.
+// A session sequence covers Squirrel events; JS receipts have their own sequence.
+// Increment before writing so a lost line leaves a detectable gap.
+::XBro.log <- function( _event, _fields = null )
+{
+    this.Sequence++;
+    try
+    {
+        local line = "[xBro] schema=3 seq=" + this.Sequence + " battle=" + this.Battle.id + " event=" + _event;
+        if (_fields != null) foreach (key, value in _fields)
+        {
+            local kind = typeof value;
+            line += " " + key + "=" + (kind == "bool" ? (value ? "1" : "0")
+                : kind == "float" ? ::format("%.9g", value) : kind == "integer" ? value.tostring() : this.quote(value));
+        }
+        ::logInfo(line);
+    }
+    catch (error)
+    {
+        this.Battle.errors++;
+        try { ::logError("[xBro] schema=3 seq=" + this.Sequence + " battle=" + this.Battle.id
+            + " event=error phase=\"log\" detail=" + this.quote(error)); }
+        catch (ignored) {}
+    }
+};
+
+::XBro.fail <- function( _phase, _error )
+{
+    this.Battle.errors++;
+    this.log("error", {phase = _phase, detail = _error.tostring()});
+    try { ::logError("xBro " + _phase + " failed: " + _error); }
+    catch (ignored) {}
+};
+
 ::XBro.reset <- function()
 {
-    this.Battle = {id = this.Battles, ours = this.newSide(), theirs = this.newSide()};
+    this.Battle = {id = this.Battles, ours = this.newSide(), theirs = this.newSide(),
+        mass = [1.0], attempts = 0, results = 0, excluded = 0, errors = 0, ended = false};
 };
 ::XBro.reset();
 
-// Each tactical battle gets the next session-wide number so its lines can be told apart in the log.
 ::XBro.begin <- function()
 {
     this.Battles++;
     this.reset();
-    this.log("battle=" + this.Battle.id + " event=start version=" + this.Version);
+    this.log("start", {version = this.Version, model = "displayed_chance_v1",
+        stats_model = "favorable_poisson_binomial_v1", ui_transport = "msu_connection_v1", enabled = this.enabled()});
 };

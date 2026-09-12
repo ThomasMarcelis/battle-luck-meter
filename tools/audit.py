@@ -1,13 +1,17 @@
-"""Recompute xBro battle summaries from the attack lines in log.html and compare with the end lines the mod wrote.
+"""Replay xBro's battle evidence and verify capture, pricing, calculations and UI receipts.
 
 usage: python3 tools/audit.py [--attacks] <log.html or - for stdin>
-Exit status 1 when any finished battle's recomputation disagrees with its end line.
+Exit 0: complete journal checks passed within the printed limits.
+Exit 1: invalid/inconsistent evidence or a source-model pricing discrepancy.
+Exit 2: incomplete evidence (including legacy v0.2 arithmetic-only logs).
 """
 import math
+import struct
 from pathlib import Path
 import sys
 
 import re
+import urllib.parse
 
 # One entry, with its log.html time stamp when the row markup is present.
 LINE = re.compile(r'(?:<div class="time">([^<]*)</div><div class="tag">[^<]*</div><div class="text">)?\[xBro\] ([^<\n]*)')
@@ -34,7 +38,7 @@ def parse(text):
 
 
 def summary(attacks, min_attacks):
-    """Same arithmetic as scripts/mods/xbro/stats.nut, formatted like the mod's end line."""
+    """Legacy normal approximation, retained for old logs only."""
     sides = {side: {'n': 0, 'hits': 0, 'sumP': 0.0, 'sumPQ': 0.0} for side in SIDES}
     for attack in attacks:
         p, side = float(attack['p']), sides[attack['side']]
@@ -74,7 +78,7 @@ def compare(recomputed, written):
     return mismatches
 
 
-def main(argv):
+def legacy_main(argv):
     show_attacks = '--attacks' in argv
     paths = [arg for arg in argv if arg != '--attacks']
     if len(paths) != 1:
@@ -117,7 +121,580 @@ def main(argv):
             counts['match'] += 1
             print('  MATCH')
     print(f"{len(battles)} battles: {counts['match']} match, {counts['unfinished']} unfinished, {counts['mismatch']} mismatch")
-    return 1 if counts['mismatch'] else 0
+    print('LEGACY: pricing inputs, exclusions and UI receipts absent; arithmetic replay only')
+    return 1 if counts['mismatch'] else 2
+
+
+# Schemas 2 and 3 are journals, not just a collection of final totals. Every line and every
+# attempted native call must reconcile, including errors and asynchronous UI reports.
+JOURNAL_LINE = re.compile(r'\[(xBro|xBroUI)\] ([^<\n]*)')
+TOKEN = re.compile(r'([a-z_]+)=("[^"\r\n]*"|[^\s"=]+)(?: +|$)')
+BOOLS = {'enabled', 'pending', 'allow_diversion', 'target_present', 'alive', 'attackable', 'uses_hitchance',
+         'able_to_die', 'ranged', 'projectile', 'by_controlled', 'on_controlled', 'hit', 'counted', 'ended', 'allied'}
+REQUIRED = {
+    'start': 'version model enabled min_attacks',
+    'attempt': 'attempt round enabled min_attacks allow_diversion reason skill_id skill by_id by',
+    'result': 'attempt hit result_type counted attack',
+    'settings': 'enabled min_attacks',
+    'state': 'attempts results excluded errors attack ours_n ours_hits ours_expected ours_variance theirs_n theirs_hits theirs_expected theirs_variance z rank offset pending enabled min_attacks text',
+    'push': 'push attack status surface enabled pending offset text',
+    'delivery': 'push status',
+    'ui': 'origin_battle push view status surface',
+    'tooltip': 'attack min_attacks ours theirs verdict',
+    'error': 'phase detail',
+    'close': 'ended',
+}
+REQUIRED['end'] = REQUIRED['state']
+
+REQUIRED_V3 = dict(REQUIRED)
+for event in ('start', 'attempt', 'settings'):
+    REQUIRED_V3[event] = REQUIRED[event].replace(' min_attacks', '')
+READOUT_FIELDS = ('marker', 'emphasis', 'ours_percent', 'ours_tone', 'theirs_percent', 'theirs_tone')
+REQUIRED_V3.update(
+    state='attempts results excluded errors attack ours_n ours_hits ours_expected ours_variance theirs_n theirs_hits theirs_expected theirs_variance rarity weight swing enabled text ' + ' '.join(READOUT_FIELDS),
+    push='push attack status surface enabled ' + ' '.join(READOUT_FIELDS),
+    tooltip='attack ours theirs verdict swing sample interpretation')
+REQUIRED_V3['end'] = REQUIRED_V3['state']
+
+
+def journal(text):
+    entries, problems, schemas = [], [], set()
+    for match in JOURNAL_LINE.finditer(text):
+        raw, at, fields = match.group(2), 0, {}
+        try:
+            while at < len(raw):
+                token = TOKEN.match(raw, at)
+                if token is None:
+                    raise ValueError(f'malformed field near {raw[at:at+40]!r}')
+                key, value = token.group(1, 2)
+                if key in fields:
+                    raise ValueError(f'duplicate field {key}')
+                if value.startswith('"'):
+                    value = value[1:-1]
+                    if re.search(r'%(?![0-9A-F]{2})', value):
+                        raise ValueError('invalid percent escape')
+                    value = urllib.parse.unquote(value, errors='strict')
+                fields[key] = value
+                at = token.end()
+            channel = match.group(1)
+            for key in ('schema', 'seq' if channel == 'xBro' else 'ui_seq', 'battle', 'event'):
+                if key not in fields:
+                    raise ValueError(f'missing {key}')
+            schemas.add(fields['schema'])
+            if fields['schema'] not in ('2', '3') or len(schemas) > 1:
+                raise ValueError('unsupported or mixed schema')
+            event = fields['event']
+            if event not in REQUIRED:
+                raise ValueError(f'unknown event {event}')
+            for key in (REQUIRED_V3 if fields['schema'] == '3' else REQUIRED)[event].split():
+                if key not in fields:
+                    raise ValueError(f'{event}: missing {key}')
+            for key in BOOLS & fields.keys():
+                if fields[key] not in ('0', '1'):
+                    raise ValueError(f'{key} must be 0 or 1')
+            fields['channel'] = channel
+            if channel == 'xBroUI' and event != 'ui':
+                raise ValueError('UI channel may only report presentation')
+            if channel == 'xBro' and event == 'ui':
+                raise ValueError('UI observations must come from the UI channel')
+            entries.append(fields)
+        except (ValueError, UnicodeError) as error:
+            problems.append(f'line {len(entries)+1}: {error}')
+    # Runtime/JS failures do not necessarily use the structured prefix.
+    for match in re.finditer(r'xBro [^<\r\n]*?failed[^<\r\n]*', text):
+        problems.append('runtime error: ' + match.group(0))
+    if text.count('[xBro]') + text.count('[xBroUI]') != len(list(JOURNAL_LINE.finditer(text))):
+        problems.append('malformed xBro entry')
+    return entries, problems
+
+
+def number(e, key, integer=False):
+    raw = e[key]
+    if integer:
+        if not re.fullmatch(r'-?\d+', raw):
+            raise ValueError(f'{key} is not an integer: {raw}')
+        return int(raw)
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ValueError(f'{key} is not finite')
+    return value
+
+
+def pricing(e):
+    """Derive eligibility and both probability interpretations from observed inputs.
+
+    The reference probability assumes ordinary clamped attackEntity thresholds;
+    it cannot see the native local threshold, reroll outcome or hidden mod changes.
+    """
+    flag = lambda k: number(e, k, True) == 1
+    if not flag('enabled'):
+        return 'disabled', None, None
+    if not flag('target_present'):
+        return 'null_target', None, None
+    for key, reason in [('alive', 'dead_target'), ('attackable', 'unattackable_target'), ('uses_hitchance', 'no_hitchance')]:
+        if not flag(key):
+            return reason, None, None
+    if not flag('able_to_die') and number(e, 'hp') == 1:
+        return 'unkillable', None, None
+    ours = number(e, 'by_faction', True) == number(e, 'player_faction', True)
+    on_us = number(e, 'on_faction', True) == number(e, 'player_faction', True)
+    if ours == on_us:
+        return 'outside_sample', None, None
+    if e['side'] != ('ours' if ours else 'theirs'):
+        raise ValueError('side disagrees with factions')
+    if flag('ranged'):
+        if not flag('allow_diversion') and flag('projectile'):
+            return 'diverted', None, None
+        if flag('allow_diversion') and number(e, 'distance') > 1 and number(e, 'blockers', True) != 0:
+            return 'blocked', None, None
+    chance, reroll = number(e, 'chance'), number(e, 'reroll')
+    if not 0 <= reroll <= 100:
+        raise ValueError('reroll outside 0..100')
+    shift = 0
+    if number(e, 'difficulty', True) == 0:
+        shift = 5 if flag('by_controlled') else -5 if flag('on_controlled') else 0
+    initial = min(1.0, max(0.0, (chance + shift) / 100.0))
+    p = initial - initial * (reroll / 100.0) * (1.0 - initial)
+    for key, want in [('shift', shift), ('shifted', chance+shift), ('initial_p', initial), ('p', p)]:
+        if abs(number(e, key)-want) > 0.000002:
+            raise ValueError(f'{key}={e[key]}, derived {want:.9g}')
+    # Enumerate integer faces offline, never in the game. Beginner shifts the
+    # first die only; the native Lucky reroll compares an unshifted fresh die.
+    first = sum((max(1, r-5) if shift == 5 else min(100, r+5) if shift == -5 else r) <= chance for r in range(1, 101))/100
+    second = sum(r <= chance for r in range(1, 101))/100
+    gate = math.floor(reroll)/100
+    reference = first * (1-gate+gate*second)
+    return 'counted', p, reference
+
+
+def calculated(attacks, minimum):
+    out = summary(attacks, minimum)
+    variance = {}
+    for side in SIDES:
+        variance[side] = sum(float(a['p'])*(1-float(a['p'])) for a in attacks if a['side'] == side)
+        out[side+'_variance'] = variance[side]
+        out[side+'_expected'] = sum(float(a['p']) for a in attacks if a['side'] == side)
+    delta = (int(out['ours_hits'])-out['ours_expected'])-(int(out['theirs_hits'])-out['theirs_expected'])
+    total = sum(variance.values())
+    z = delta/math.sqrt(total) if total else 0.0
+    out.update(z=z, offset=0.0 if len(attacks)<minimum else math.tanh(z/2), attack=len(attacks))
+    return out
+
+
+def presentation(z, n, minimum):
+    phi = 0.5*(1+math.erf(z/math.sqrt(2)))
+    rank = min(99, math.floor(100*max(phi, 1-phi)))
+    pending = n < minimum
+    return {'rank': str(rank), 'pending': str(int(pending)),
+            'offset': 0.0 if pending else math.tanh(z/2),
+            'text': '' if pending else 'Even' if -0.5 < z < 0.5 else ('Lucky ' if z>0 else 'Unlucky ')+f'{rank}%'}
+
+
+def float32(value):
+    return struct.unpack('f', struct.pack('f', value))[0]
+
+
+def presentation_v3(s):
+    n, rarity = int(s['attack']), float(s['rarity'])
+    weight = min(n / 10, 1.0)
+    text = 'Even'
+    if rarity != 50:
+        group = max(1, math.ceil(min(rarity, 100-rarity)-0.0001))
+        text = f'Bottom {group}% unluckiest battles' if rarity < 50 else f'Top {group}% luckiest battles'
+    out = dict(weight=weight, marker=50+(rarity-50)*weight, emphasis=0.5+0.5*weight, text=text)
+    for side in SIDES:
+        expected = float(s[side+'_expected'])
+        change = None
+        if expected > 0:
+            # Each runtime arithmetic operation rounds to a Squirrel float.
+            relative = float32(100*float32(float32(int(s[side+'_hits'])/float32(expected))-1))
+            change = math.floor(float32(abs(relative)+0.5)) * (-1 if relative < 0 else 1)
+        out[side+'_percent'] = '—' if change is None else '0%' if change == 0 else f'{change:+d}%'
+        out[side+'_tone'] = 'neutral' if not change else 'good' if (change > 0) == (side == 'ours') else 'bad'
+    return out
+
+
+def calculated_v3(attacks, mass):
+    out = {'attack': len(attacks)}
+    for side in SIDES:
+        sample = [a for a in attacks if a['side'] == side]
+        # The journal's nine significant digits round-trip each priced float.
+        # Replay the runtime's operations, including rounding after each sum;
+        # a fixed per-attack tolerance cannot bound long-battle accumulation drift.
+        expected, variance = 0.0, 0.0
+        for attack in sample:
+            p = float32(float(attack['p']))
+            expected = float32(expected + p)
+            variance = float32(variance + float32(p * float32(1-p)))
+        out.update({side+'_n': len(sample), side+'_hits': sum(a['hit'] == '1' for a in sample),
+                    side+'_expected': expected, side+'_variance': variance})
+    observed = out['ours_hits'] + out['theirs_n'] - out['theirs_hits']
+    total = math.fsum(mass)
+    lower, upper = math.fsum(mass[:observed+1])/total, math.fsum(mass[observed:])/total
+    out['rarity'] = 100*lower if lower < 0.5-1e-7 else 100*(1-upper) if upper < 0.5-1e-7 else 50.0
+    out['swing'] = float32(float32(out['ours_hits']-out['ours_expected'])-float32(out['theirs_hits']-out['theirs_expected']))
+    out.update(presentation_v3(out))
+    return out
+
+
+def verify_side_text_v3(e, s, compact=False):
+    for side, label in [('ours', 'You'), ('theirs', 'Enemy')]:
+        pattern = (rf'{label}: {s[side+"_hits"]} {"hit" if s[side+"_hits"] == 1 else "hits"} vs (\d+\.\d{{2}}) expected' if compact else
+                   rf'{label}: {s[side+"_hits"]}/{s[side+"_n"]} hit, (\d+\.\d{{2}}) expected\. (.*)')
+        match = re.fullmatch(pattern, e[side])
+        if match is None or abs(float(match[1])-float(s[side+'_expected'])) > 0.00502:
+            raise ValueError('displayed side counts or expected hits differ')
+        if compact:
+            continue
+        percent = s[side+'_percent']
+        explanation = 'No hit comparison yet.' if percent == '—' else 'About as many hits as expected.' if percent == '0%' else (
+            f'{abs(int(percent[:-1]))}% {"more" if percent[0] == "+" else "fewer"} hits than expected.')
+        if match[2] != explanation:
+            raise ValueError('displayed hit comparison differs')
+
+
+def sample_text(n):
+    return ('No attacks recorded.' if n == 0 else
+            f'Small sample: {n} {"attack" if n == 1 else "attacks"}. Below 10 attacks, the bar stays closer to the centre.' if n < 10 else
+            f'Counted attacks: {n}.')
+
+
+def verify_swing_text(text, swing):
+    if text == 'Net hit swing: even.':
+        if abs(swing) > 0.00502:
+            raise ValueError('displayed net hit swing is not even')
+        return
+    match = re.fullmatch(r'Net hit swing: (\d+\.\d{2}) hits (in your favour|against you)\.', text)
+    if (match is None or float(match[1]) == 0 or abs(float(match[1])-abs(swing)) > 0.00502
+            or (match[2] == 'in your favour') != (swing > 0)):
+        raise ValueError('displayed net hit swing differs')
+
+
+def verify_tooltip_v3(e, s):
+    n = int(s['attack'])
+    verify_fields(e, {'attack': n, 'verdict': s['text'] if n else 'No attacks recorded', 'sample': sample_text(n),
+                     'interpretation': "Compared with battles with the same hit chances; equally lucky or unlucky outcomes count too. Rarity uses the full calculation, before the bar's early damping."})
+    verify_swing_text(e['swing'], float(s['swing']))
+    verify_side_text_v3(e, s)
+
+
+def verify_fields(e, expected):
+    for key, want in expected.items():
+        if key not in e:
+            raise ValueError(f'missing {key}')
+        if isinstance(want, float):
+            # Single-precision accumulation in the game, double precision here.
+            tolerance = max(0.00002, int(expected.get('attack', 0))*0.000002) if key not in ('offset', 'marker', 'weight', 'emphasis') else 0.00002
+            if abs(number(e, key)-want) > tolerance:
+                raise ValueError(f'{key}: wrote {e[key]}, derived {want:.9g}')
+        elif str(want) != e[key]:
+            raise ValueError(f'{key}: wrote {e[key]!r}, derived {want!r}')
+
+
+def verify_side_text(e, s):
+    for key, side, label in [('ours', 'ours', 'You'), ('theirs', 'theirs', 'Enemy')]:
+        prefix = f'{label}: {s[side+"_hits"]}/{s[side+"_n"]} hit, '
+        if not e[key].startswith(prefix) or not e[key].endswith(' expected'):
+            raise ValueError('displayed side counts differ')
+        expected = float(e[key][len(prefix):-9])
+        if not math.isfinite(expected) or abs(expected-s[side+'_expected']) > 0.05002:
+            raise ValueError('displayed expected hits differ')
+
+
+def audit_journal(text, show_attacks=False):
+    entries, errors = journal(text)
+    incomplete, models = [], []
+    battles, pushes, receipts, views, destroyed = {}, {}, set(), set(), set()
+    sequence = 0
+    ui_sequence = 0
+    last_render = {}
+    for e in entries:
+        try:
+            if e['channel'] == 'xBro':
+                seq = number(e, 'seq', True)
+                if seq != sequence+1:
+                    errors.append(f'journal sequence {sequence} -> {seq}: missing, duplicate or reordered entry')
+                sequence = seq
+            else:
+                seq = number(e, 'ui_seq', True)
+                if seq != ui_sequence+1:
+                    errors.append(f'UI sequence {ui_sequence} -> {seq}: missing, duplicate or reordered receipt')
+                ui_sequence = seq
+            v3 = e['schema'] == '3'
+            bid = number(e, 'battle', True)
+            if bid < 0:
+                raise ValueError('negative battle ID')
+            b = battles.setdefault(bid, {'start': None, 'end': None, 'closed': False, 'attempts': {}, 'results': set(), 'attacks': [],
+                                       'mass': [1.0], 'excluded': 0, 'enabled': None, 'minimum': None, 'states': 0, 'needs_state': False, 'needs_push': False, 'presentation': None})
+            event = e['event']
+            if e['channel'] == 'xBro' and b['needs_push'] and event != 'push':
+                errors.append(f'battle {bid}: missing push after state')
+                b['needs_push'] = False
+            if e['channel'] == 'xBro' and b['needs_state'] and event != 'state':
+                errors.append(f'battle {bid}: missing state after counted result')
+                b['needs_state'] = False
+            if event == 'start':
+                if b['start'] or b['attempts']:
+                    raise ValueError('duplicate/late battle start')
+                if e['model'] != 'displayed_chance_v1':
+                    raise ValueError('unsupported probability model')
+                b['start'] = e
+            if event in ('start', 'settings'):
+                b['enabled'], b['minimum'] = e['enabled'], 10 if v3 else number(e, 'min_attacks', True)
+                if event == 'settings':
+                    b['needs_state'] = True
+                if not 4 <= b['minimum'] <= 30:
+                    raise ValueError('minimum attacks outside settings range')
+            if event == 'attempt':
+                aid = number(e, 'attempt', True)
+                if aid != len(b['attempts'])+1:
+                    raise ValueError('nonconsecutive or duplicate attempt ID')
+                b['attempts'][aid] = e
+                if b['end']:
+                    raise ValueError('attack attempted after end')
+                if number(e, 'round', True) < 0:
+                    raise ValueError('negative round')
+                verify_fields(e, {'enabled': b['enabled']} if v3 else {'enabled': b['enabled'], 'min_attacks': b['minimum']})
+                if e['reason'] == 'capture_error':
+                    raise ValueError('capture failed')
+                reason, p, reference = pricing(e)
+                if e['reason'] != reason:
+                    raise ValueError(f'exclusion: wrote {e["reason"]}, derived {reason}')
+                if e.get('target_present') == '1' and ('on_id' not in e or 'on' not in e):
+                    raise ValueError('missing target identity')
+                if p is not None:
+                    if e.get('allied') == '1':
+                        models.append(f'battle {bid} attempt {aid}: allied cross-faction attack included in opposing-side sample')
+                    if not 0 <= number(e, 'p') <= 1:
+                        raise ValueError('probability outside 0..1')
+                    if abs(p-reference)>0.000002:
+                        models.append(f'battle {bid} attempt {aid}: meter p={p:.6f}, integer-die reference p={reference:.6f}')
+                if show_attacks:
+                    print(f'battle {bid} attempt {aid} round {e["round"]}: {reason}, {e["skill"]} by {e["by"]!r} on {e.get("on", "null")!r}'
+                          + (f' chance={e["chance"]} p={e["p"]}' if p is not None else ''))
+            elif event == 'result':
+                aid = number(e, 'attempt', True)
+                if aid not in b['attempts'] or aid in b['results']:
+                    raise ValueError('orphan or duplicate result')
+                if b['end']:
+                    raise ValueError('result after end')
+                b['results'].add(aid)
+                attempt = b['attempts'][aid]
+                counted = attempt['reason'] == 'counted'
+                verify_fields(e, {'result_type': 'bool', 'counted': int(counted)})
+                if counted:
+                    b['attacks'].append(dict(attempt, hit=e['hit']))
+                    if v3:
+                        q = float(attempt['p']) if attempt['side'] == 'ours' else 1-float(attempt['p'])
+                        old = b['mass']
+                        b['mass'] = [old[0]*(1-q)] + [old[k]*(1-q)+old[k-1]*q for k in range(1, len(old))] + [old[-1]*q]
+                    b['needs_state'] = True
+                else:
+                    b['excluded'] += 1
+                verify_fields(e, {'attack': len(b['attacks'])})
+            elif event in ('state', 'end'):
+                if event == 'end' and b['end']:
+                    raise ValueError('duplicate end')
+                minimum = 10 if v3 else number(e, 'min_attacks', True)
+                if bid != 0:
+                    verify_fields(e, {'enabled': b['enabled']} if v3 else {'enabled': b['enabled'], 'min_attacks': b['minimum']})
+                if v3:
+                    expected = calculated_v3(b['attacks'], b['mass'])
+                    # Verify raw arithmetic independently, then format from validated
+                    # float32 values so genuine rounding ties retain their runtime side.
+                    verify_fields(e, {k: v for k, v in expected.items() if k not in (*READOUT_FIELDS, 'weight', 'text')})
+                    displayed = presentation_v3(e)
+                    expected.update(displayed)
+                else:
+                    expected = calculated(b['attacks'], minimum)
+                    displayed = presentation(number(e, 'z'), len(b['attacks']), minimum)
+                    # CDF approximation and 32-bit rounding can cross an integer rank
+                    # boundary by less than 0.0001 percentage points. Accept that
+                    # adjacent rank only at such a boundary, preserving strict text.
+                    raw_rank = 100*max(0.5*(1+math.erf(number(e, 'z')/math.sqrt(2))), 0.5*(1-math.erf(number(e, 'z')/math.sqrt(2))))
+                    written_rank = number(e, 'rank', True)
+                    allowed_ranks = {max(50, min(99, math.floor(raw_rank+error))) for error in (-0.0001, 0.0001)}
+                    if written_rank in allowed_ranks:
+                        displayed['rank'] = str(written_rank)
+                        if displayed['text'] not in ('', 'Even'):
+                            displayed['text'] = ('Lucky ' if number(e, 'z')>0 else 'Unlucky ')+str(written_rank)+'%'
+                    expected.update(displayed)
+                expected.update(attempts=len(b['attempts']), results=len(b['results']), excluded=b['excluded'], errors=0)
+                verify_fields(e, expected)
+                b['presentation'] = displayed
+                b['states'] += 1
+                b['needs_state'] = False
+                if event == 'state':
+                    b['needs_push'] = True
+                if event == 'end':
+                    b['end'] = e
+                    if len(b['attempts']) != len(b['results']):
+                        raise ValueError('battle ended with unsettled attempts')
+            elif event == 'push':
+                b['needs_push'] = False
+                pid = number(e, 'push', True)
+                if pid in pushes:
+                    raise ValueError('duplicate push ID')
+                pushes[pid] = dict(e, outside=(b['closed'] or bid == 0) and e['surface'] == 'battle')
+                if e['surface'] not in ('battle', 'results'):
+                    raise ValueError('unknown UI surface')
+                if e['status'] not in ('requested', 'unavailable'):
+                    raise ValueError('unknown delivery status')
+                if bid != 0 and b['minimum'] is not None:
+                    want = calculated_v3(b['attacks'], b['mass']) if v3 else calculated(b['attacks'], b['minimum'])
+                    if b['presentation'] is not None:
+                        want.update(b['presentation'])
+                    if e['surface'] == 'results':
+                        if not b['end']:
+                            raise ValueError('results payload before battle end')
+                        if v3:
+                            verify_side_text_v3(e, want, compact=True)
+                            verify_fields(e, {'text': want['text'] if b['attacks'] else 'No attacks recorded',
+                                              'sample': sample_text(len(b['attacks'])) if b['attacks'] else ''})
+                            if b['attacks']:
+                                verify_swing_text(e['swing'], float(want['swing']))
+                            else:
+                                verify_fields(e, {'swing': ''})
+                        else:
+                            want['text'] = 'No attacks recorded' if not b['attacks'] else 'Too few attacks' if want['pending']=='1' else want['text']
+                            verify_side_text(e, want)
+                    verify_fields(e, {k: want[k] for k in (('attack',) + READOUT_FIELDS if v3 else ('attack', 'pending', 'offset', 'text'))})
+                    verify_fields(e, {'enabled': b['enabled']})
+            elif event == 'delivery':
+                if number(e, 'push', True) not in pushes or e['status'] != 'disconnected':
+                    raise ValueError('invalid delivery report')
+                incomplete.append(f'battle {bid}: push {e["push"]} disconnected')
+            elif event == 'ui':
+                pid = number(e, 'push', True)
+                if pid not in pushes:
+                    raise ValueError('UI receipt without a push')
+                push = pushes[pid]
+                verify_fields(e, {'origin_battle': push['battle'], 'surface': push['surface']})
+                if e['status'] == 'rendered':
+                    if pid in receipts and push['surface'] == 'battle':
+                        raise ValueError('duplicate render receipt')
+                    if push['surface'] == 'results':
+                        verify_fields(e, {'ours': push['ours'], 'theirs': push['theirs']})
+                        if v3:
+                            verify_fields(e, {k: push[k] for k in ('text', 'sample', 'swing')})
+                    verify_fields(e, {'display': '' if push['enabled']=='1' else 'none'})
+                    if v3:
+                        verify_fields(e, {k: push[k] for k in READOUT_FIELDS if k not in ('marker', 'emphasis')})
+                        verify_fields(e, {'emphasis': float(push['emphasis'])})
+                    else:
+                        verify_fields(e, {'text': push['text'], 'pending': push['pending']})
+                    left = e['left']
+                    marker = float(push['marker']) if v3 else 50-float(push['offset'])*50
+                    if not left.endswith('%') or not math.isfinite(float(left[:-1])) or abs(float(left[:-1])-marker)>0.002:
+                        raise ValueError('rendered marker disagrees with pushed position')
+                    if number(e, 'view', True) <= 0:
+                        raise ValueError('invalid rendered view ID')
+                    identity = (int(e['origin_battle']), number(e, 'view', True))
+                    if identity in destroyed or pid <= last_render.get(identity, 0):
+                        raise ValueError('render after destruction or out-of-order render')
+                    last_render[identity] = pid
+                    receipts.add(pid)
+                    views.add(identity)
+                elif e['status'] == 'suppressed':
+                    if push['surface'] != 'results' or push['enabled'] != '0':
+                        raise ValueError('unexpected suppressed result')
+                    receipts.add(pid)
+                elif e['status'] == 'destroyed':
+                    identity = (int(e['origin_battle']), number(e, 'view', True))
+                    if identity not in views or identity in destroyed or last_render.get(identity) != pid:
+                        raise ValueError('orphan or duplicate view destruction')
+                    destroyed.add(identity)
+                else:
+                    incomplete.append(f'battle {bid}: UI {e["status"]} for push {pid}')
+            elif event == 'tooltip':
+                if b['minimum'] is None:
+                    continue
+                if v3:
+                    s = calculated_v3(b['attacks'], b['mass'])
+                    if b['presentation'] is not None:
+                        s.update(b['presentation'])
+                    verify_tooltip_v3(e, s)
+                else:
+                    s = calculated(b['attacks'], b['minimum'])
+                    if b['presentation'] is not None:
+                        s.update(b['presentation'])
+                    verdict = f'Needs {b["minimum"]} attacks ({len(b["attacks"])} so far)' if s['pending']=='1' else 'Even' if s['text']=='Even' else ('Luckier' if s['z']>0 else 'Unluckier')+f' than {s["rank"]}% of battles'
+                    verify_fields(e, {'attack': len(b['attacks']), 'min_attacks': b['minimum'], 'verdict': verdict})
+                    verify_side_text(e, s)
+            elif event == 'error':
+                raise ValueError(f'{e["phase"]}: {e["detail"]}')
+            elif event == 'close':
+                if b['closed']:
+                    raise ValueError('duplicate screen close')
+                b['closed'] = True
+                if e['ended'] != str(int(b['end'] is not None)):
+                    raise ValueError('close/end disagreement')
+        except (KeyError, ValueError, TypeError, OverflowError) as error:
+            errors.append(f'seq {e.get("seq", "?")} battle {e.get("battle", "?")} {e["event"]}: {error}')
+    for bid, b in battles.items():
+        if bid == 0:
+            if b['attempts']:
+                errors.append('attacks outside a numbered battle')
+            continue
+        if not b['start']:
+            incomplete.append(f'battle {bid}: no start')
+        if not b['end']:
+            incomplete.append(f'battle {bid}: no end (partial or abandoned battle)')
+        if not b['closed']:
+            incomplete.append(f'battle {bid}: screen close not observed')
+        if b['needs_push']:
+            incomplete.append(f'battle {bid}: missing push after final state')
+        if b['needs_state']:
+            incomplete.append(f'battle {bid}: missing final state')
+        if len(b['attempts']) != len(b['results']):
+            incomplete.append(f'battle {bid}: unsettled attempts')
+        own_pushes = [p for p in pushes.values() if int(p['battle'])==bid and not p['outside']]
+        if b['closed']:
+            for identity in views-destroyed:
+                if identity[0] == bid:
+                    incomplete.append(f'battle {bid}: view {identity[1]} destruction not observed')
+        if not any(p['surface'] == 'battle' for p in own_pushes):
+            incomplete.append(f'battle {bid}: no battle UI pushes')
+        if b['end'] and b['closed'] and not any(p['surface'] == 'results' for p in own_pushes):
+            incomplete.append(f'battle {bid}: no results payload observed')
+        for p in own_pushes:
+            if int(p['push']) not in receipts:
+                incomplete.append(f'battle {bid}: no render receipt for push {p["push"]} ({p["status"]})')
+        if b['minimum'] is not None:
+            print(f'battle {bid}: {len(b["attempts"])} attempts, {len(b["results"])} results, {b["excluded"]} excluded, {b["states"]} checkpoints')
+            if b['start'] and b['start']['schema'] == '3':
+                s = calculated_v3(b['attacks'], b['mass'])
+                print(f'  You {s["ours_percent"]} | Enemy {s["theirs_percent"]} | {s["text"]} | marker {s["marker"]:.2f}')
+            else:
+                print('  '+describe(b['end'] if b['end'] else summary(b['attacks'], b['minimum'])))
+    if not any(bid > 0 for bid in battles):
+        incomplete.append('no numbered battle observed')
+    for label, findings in [('ERROR', errors), ('MODEL DISCREPANCY', models), ('INCOMPLETE', incomplete)]:
+        for finding in findings:
+            print(f'{label}: {finding}')
+    print(f'journal: {len(entries)} events, {len(errors)} errors, {len(models)} model discrepancies, {len(incomplete)} evidence gaps')
+    print('LIMIT: reference pricing assumes ordinary clamped engine thresholds; native dice/hidden modifiers and attacks bypassing this hook are unobserved.')
+    print('LIMIT: rarity compares recorded odds (schema 2 uses a normal approximation); UI receipts confirm DOM assignment, not visible fit or a full install/removal lifecycle.')
+    if not entries:
+        return 1
+    return 1 if errors or models else 2 if incomplete else 0
+
+
+def main(argv):
+    paths = [arg for arg in argv if arg != '--attacks']
+    if len(paths) != 1:
+        sys.exit(__doc__)
+    text = sys.stdin.read() if paths[0] == '-' else Path(paths[0]).read_text(encoding='utf-8', errors='strict')
+    if '[xBro] schema=' not in text:
+        if paths[0] == '-':
+            from io import StringIO
+            original, sys.stdin = sys.stdin, StringIO(text)
+            try:
+                return legacy_main(argv)
+            finally:
+                sys.stdin = original
+        return legacy_main(argv)
+    return audit_journal(text, '--attacks' in argv)
 
 
 if __name__ == '__main__':

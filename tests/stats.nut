@@ -1,73 +1,96 @@
 local X = ::XBro, cases = {};
-local helderChances = [35, 6, 50, 82, 82, 64, 21, 18], helderHits = [1, 0, 1, 1, 1, 1, 1, 1];
 
-cases.helder_sequence_against_us_is_a_three_sigma_unlucky_battle <- function()
+cases.inclusive_tails_keep_common_outcomes_neutral <- function()
 {
-    feed("theirs", helderChances, helderHits);
-    local s = X.summary(8);
-    check(near(s.theirs.expected, 3.58, 0.005), "expected hits " + s.theirs.expected);
-    check(near(::Math.pow(X.Battle.theirs.sumPQ, 0.5), 1.17, 0.005), "sd " + X.Battle.theirs.sumPQ);
-    check(near(s.z, -2.92, 0.01), "z " + s.z);
-    check(s.theirs.hits == 7 && s.theirs.n == 8 && s.ours.n == 0, "counts");
-    check(!s.pending && s.text == "Unlucky 99%" && s.rank == 99, "readout " + s.text);
-    check(s.offset < -0.85 && s.offset > -0.95, "unlucky offset is negative: " + s.offset);
+    check(X.summary().rarity == 50.0 && X.summary().ours.percent == "—", "empty battle");
+    foreach (hit in [false, true])
+    {
+        X.reset(); X.record("ours", 0.5, hit);
+        check(X.summary().rarity == 50.0 && X.summary().marker == 50.0, "one coin flip is common");
+    }
+    X.record("ours", 0.5, true);
+    check(near(X.summary().rarity, 75.0, 0.0001) && near(X.summary().marker, 55.0, 0.0001), "two heads: upper tail 1/4");
+    X.reset(); feed("ours", array(8, 50), [1, 1, 1, 1, 1, 1, 0, 0]);
+    check(near(X.summary().rarity, 85.546875, 0.0001), "6/8: upper tail 37/256");
+    X.reset(); feed("ours", array(8, 95), array(8, 1));
+    check(X.summary().rarity == 50.0, "eight likely hits remain common");
+    X.reset(); feed("ours", array(10, 100), array(10, 1));
+    check(X.summary().rarity == 50.0 && X.summary().marker == 50.0, "certain outcomes");
 };
 
-cases.same_sequence_by_us_mirrors_to_lucky <- function()
+cases.percentages_are_immediate_undamped_and_player_coloured <- function()
 {
-    feed("ours", helderChances, helderHits);
-    local s = X.summary(8);
-    check(near(s.z, 2.92, 0.01) && s.text == "Lucky 99%", "mirror " + s.text);
-    feed("theirs", helderChances, helderHits);
-    s = X.summary(8);
-    check(near(s.z, 0.0, 1e-6) && s.text == "Even", "both sides equally lucky must cancel: " + s.text);
+    X.record("ours", 0.95, false);
+    local s = X.summary();
+    check(s.ours.percent == "-100%" && s.ours.tone == "bad" && s.theirs.percent == "—", "first miss visible");
+    check(near(s.rarity, 5.0, 0.0001) && near(s.marker, 45.5, 0.0001), "rare miss is damped");
+    X.reset(); X.record("ours", 0.05, true);
+    s = X.summary();
+    check(s.ours.percent == "+1900%" && s.ours.tone == "good", "no positive cap or percent damping");
+    check(near(s.rarity, 95.0, 0.0001) && near(s.marker, 54.5, 0.0001), "rare hit is damped");
+    X.reset(); feed("ours", array(4, 40), [1, 1, 1, 0]);
+    check(X.summary().ours.percent == "+88%", "float32 half rounds away from zero");
+    X.record("theirs", 0.5, true);
+    check(X.summary().theirs.percent == "+100%" && X.summary().theirs.tone == "bad", "enemy surplus is red");
+    X.reset(); X.record("theirs", 0.5, false);
+    check(X.summary().theirs.tone == "good", "enemy deficit is green");
+    X.reset(); X.record("ours", 0.0, false);
+    check(X.summary().ours.percent == "—" && X.summary().ours.tone == "neutral", "undefined ratio");
+    X.reset(); X.record("ours", 0.999, true);
+    check(X.summary().ours.percent == "0%" && X.summary().ours.tone == "neutral", "rounded positive zero");
+    X.record("ours", 0.002, false);
+    check(X.summary().ours.percent == "0%" && X.summary().ours.tone == "neutral", "rounded negative zero");
 };
 
-cases.normal_cdf_matches_tables <- function()
+cases.damping_decreases_linearly_and_is_gone_at_ten <- function()
 {
-    foreach (z, p in {[0.0] = 0.5, [0.5] = 0.6915, [1.0] = 0.8413, [1.5] = 0.9332, [2.0] = 0.9772, [2.5] = 0.9938, [-1.0] = 0.1587, [-2.5] = 0.0062})
-        check(near(X.normalCdf(z), p, 0.0001), "cdf(" + z + ") = " + X.normalCdf(z));
+    for (local n = 1; n <= 12; n++)
+    {
+        X.record(n % 2 == 0 ? "ours" : "theirs", 0.5, n % 2 == 0);
+        local s = X.summary(), weight = n < 10 ? n / 10.0 : 1.0;
+        local raw = n == 1 ? 50.0 : 100.0 * (1.0 - ::Math.pow(0.5, n));
+        check(near(s.rarity, raw, 0.0001), "exact all-favorable tail");
+        check(near(s.weight, weight, 0.00001) && near(s.marker, 50.0 + (raw - 50.0) * weight, 0.0001), "linear warm-up " + n);
+        check(near(s.emphasis, 0.5 + 0.5 * weight, 0.00001), "visual emphasis");
+        if (n >= 10) check(s.marker == s.rarity && s.weight == 1.0, "no residual damping");
+    }
 };
 
-cases.offset_is_bounded_tanh <- function()
+cases.mixed_odds_match_hand_enumeration_and_order_and_side_symmetry <- function()
 {
-    check(X.tanh(0.0) == 0.0 && near(X.tanh(1.0), 0.7616, 0.0005) && near(X.tanh(-1.0), -0.7616, 0.0005), "tanh values");
-    check(X.tanh(50.0) == 1.0 && X.tanh(-50.0) == -1.0 && X.tanh(5.0) < 1.0, "saturation");
-    feed("ours", [95, 95, 95, 95, 95, 95, 95, 95], [1, 1, 1, 1, 1, 1, 1, 1]);
-    feed("theirs", [5, 5, 5, 5, 5, 5, 5, 5], [0, 0, 0, 0, 0, 0, 0, 0]);
-    local s = X.summary(8);
-    check(s.offset > 0.0 && s.offset < 1.0, "offset stays inside the bar: " + s.offset);
+    // q=.2,.7,.6 gives mass [.096,.392,.428,.084]; observed F=1 => lower=.488.
+    X.record("ours", 0.2, true); X.record("ours", 0.7, false); X.record("theirs", 0.4, true);
+    local s = X.summary();
+    foreach (i, want in [0.096, 0.392, 0.428, 0.084]) check(near(X.Battle.mass[i], want, 0.00001), "probability mass");
+    check(near(s.rarity, 48.8, 0.0001), "inclusive mixed lower tail");
+    X.reset(); X.record("theirs", 0.4, true); X.record("ours", 0.7, false); X.record("ours", 0.2, true);
+    check(near(X.summary().rarity, s.rarity, 0.0001), "order invariance");
+    X.reset(); X.record("theirs", 0.2, true); X.record("theirs", 0.7, false); X.record("ours", 0.4, true);
+    check(near(X.summary().rarity, 100.0 - s.rarity, 0.0001), "swap sides reverses luck");
+    X.reset(); check(X.Battle.mass.len() == 1 && X.Battle.mass[0] == 1.0, "distribution belongs to battle");
 };
 
-cases.zero_variance_and_empty_battle_are_neutral <- function()
+cases.existing_battle_reports_hit_deficits_and_conservative_rarity_group <- function()
 {
-    local s = X.summary(8);
-    check(s.pending && s.z == 0.0 && s.offset == 0.0 && s.text == "" && s.n == 0, "empty");
-    feed("ours", [100, 100, 100, 100, 100, 100, 100, 100], [1, 1, 1, 1, 1, 1, 1, 1]);
-    s = X.summary(8);
-    check(!s.pending && s.z == 0.0 && s.text == "Even", "certain hits carry no luck: " + s.text);
+    feed("ours", [82,82,64,64,60,60,55,55,50,50,50,50,68], [1,0,1,0,1,0,1,0,1,0,1,0,0]);
+    feed("theirs", [35,35,50,50,50,50,55,55,60,60,60,60,55,55], [1,1,1,1,1,1,1,1,0,0,0,0,0,0]);
+    local s = X.summary();
+    check(s.ours.percent == "-24%" && s.theirs.percent == "+10%", "relative hit counts");
+    check(s.ours.tone == "bad" && s.theirs.tone == "bad", "both hurt the player");
+    check(near(s.swing, -2.6, 0.00001) && near(s.rarity, 20.2055, 0.0001), "net swing and exact rarity");
+    check(s.text == "Bottom 21% unluckiest battles", "round group upward");
+    X.reset(); X.record("ours", 0.95, false);
+    check(X.summary().text == "Bottom 5% unluckiest battles", "float drift must not enlarge an integer group");
+    X.reset(); feed("ours", array(10, 5), array(10, 1));
+    check(X.summary().text == "Top 1% luckiest battles", "minimum displayed group");
 };
 
-cases.threshold_and_neutral_band <- function()
+cases.long_battle_normalizes_float_drift_and_stays_finite <- function()
 {
-    feed("ours", [50, 50, 50, 50], [1, 1, 1, 1]);
-    feed("theirs", [50, 50, 50], [0, 0, 0]);
-    local s = X.summary(8);
-    check(s.pending && s.text == "" && s.offset == 0.0 && near(s.z, 2.646, 0.01), "seven attacks stay pending");
-    X.record("theirs", 0.5, false);
-    s = X.summary(8);
-    check(!s.pending && s.text == "Lucky 99%", "eighth attack unlocks the verdict: " + s.text);
-    check(X.summary(9).pending, "threshold is the setting");
-    X.reset();
-    feed("ours", [50, 50, 50, 50, 50, 50, 50, 50], [1, 0, 1, 0, 1, 0, 1, 1]);
-    s = X.summary(8);
-    check(near(s.z, 0.707, 0.01) && s.text == "Lucky 76%", "z just above the band: " + s.text);
-    X.reset();
-    feed("ours", [50, 50, 50, 50, 50, 50, 50, 50], [1, 0, 1, 0, 1, 0, 1, 0]);
-    check(X.summary(8).text == "Even", "|z| < 0.5 reads Even");
-    X.reset();
-    feed("theirs", [50, 50, 50, 50, 50, 50, 50, 50], [1, 0, 1, 0, 1, 0, 1, 1]);
-    check(X.summary(8).text == "Unlucky 76%", "unlucky wording");
+    for (local i = 0; i < 1000; i++) X.record("ours", 0.5, i % 2 == 0);
+    check(X.summary().rarity == 50.0, "symmetric long battle");
+    foreach (i, value in X.Battle.mass) X.Battle.mass[i] = value * 1.001;
+    check(X.summary().rarity == 50.0, "normalize accumulated mass");
 };
 
 return cases;

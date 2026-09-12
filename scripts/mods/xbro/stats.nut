@@ -5,47 +5,59 @@
     if (_hit) side.hits++;
     side.sumP += _p;
     side.sumPQ += _p * (1.0 - _p);
+
+    // Favorable outcomes are our hits and enemy misses. Update the distribution
+    // once per counted attack, descending so each term reads the previous state.
+    local q = _side == "ours" ? _p : 1.0 - _p, mass = this.Battle.mass;
+    mass.push(0.0);
+    for (local k = mass.len() - 1; k > 0; k--)
+        mass[k] = mass[k] * (1.0 - q) + mass[k - 1] * q;
+    mass[0] *= 1.0 - q;
 };
 
-// The game's Math table has pow but no exp or sqrt.
-::XBro.exp <- @(_x) ::Math.pow(2.718281828459045, _x);
-
-// Standard normal CDF via Abramowitz-Stegun 7.1.26 (|error| < 1.5e-7).
-::XBro.normalCdf <- function( _z )
+::XBro.sideSummary <- function( _side, _ours )
 {
-    local x = (_z < 0 ? -_z : _z) / 1.4142135623730951;
-    local t = 1.0 / (1.0 + 0.3275911 * x);
-    local poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
-    local erf = 1.0 - poly * this.exp(-x * x);
-    return 0.5 * (1.0 + (_z < 0 ? -erf : erf));
+    local percent = "—", tone = "neutral", change = null;
+    if (_side.sumP > 0.0)
+    {
+        local relative = 100.0 * (_side.hits / _side.sumP - 1.0);
+        change = ::Math.floor(::Math.abs(relative) + 0.5).tointeger();
+        if (relative < 0.0) change = -change;
+        percent = (change > 0 ? "+" : "") + change + "%";
+        if (change != 0) tone = (change > 0) == _ours ? "good" : "bad";
+    }
+    return {n = _side.n, hits = _side.hits, expected = _side.sumP,
+        change = change, percent = percent, tone = tone};
 };
 
-::XBro.tanh <- function( _x )
+::XBro.summary <- function()
 {
-    if (_x > 10.0) return 1.0;
-    if (_x < -10.0) return -1.0;
-    local e = this.exp(2.0 * _x);
-    return (e - 1.0) / (e + 1.0);
-};
-
-// Net luck: z of (our hits - expected) - (their hits - expected); independent sides add variance.
-::XBro.summary <- function( _minAttacks )
-{
-    local ours = this.Battle.ours, theirs = this.Battle.theirs;
-    local n = ours.n + theirs.n;
-    local variance = ours.sumPQ + theirs.sumPQ;
-    local diff = (ours.hits - ours.sumP) - (theirs.hits - theirs.sumP);
-    local z = variance > 0.0 ? diff / ::Math.pow(variance, 0.5) : 0.0;
-    local percentile = this.normalCdf(z);
-    local rank = ::Math.floor(100.0 * (percentile >= 0.5 ? percentile : 1.0 - percentile)).tointeger();
-    if (rank > 99) rank = 99;
-    local pending = n < _minAttacks;
-    local text = "";
-    if (!pending) text = (z > -0.5 && z < 0.5) ? "Even" : (z > 0 ? "Lucky " : "Unlucky ") + rank + "%";
-    return {
-        n = n, pending = pending, z = z, rank = rank, text = text,
-        offset = pending ? 0.0 : this.tanh(z / 2.0),
-        ours = {n = ours.n, hits = ours.hits, expected = ours.sumP},
-        theirs = {n = theirs.n, hits = theirs.hits, expected = theirs.sumP}
-    };
+    local ours = this.sideSummary(this.Battle.ours, true), theirs = this.sideSummary(this.Battle.theirs, false);
+    local n = ours.n + theirs.n, observed = ours.hits + theirs.n - theirs.hits;
+    local lower = 0.0, upper = 0.0, total = 0.0;
+    foreach (k, mass in this.Battle.mass)
+    {
+        total += mass;
+        if (k <= observed) lower += mass;
+        if (k >= observed) upper += mass;
+    }
+    // Inclusive tails count ties. Choose the boundary towards the median; a
+    // common outcome whose percentile interval contains 50% stays neutral.
+    lower /= total; upper /= total;
+    local rarity = 50.0;
+    // Single-precision summation can place an exact half just below the median.
+    if (lower < 0.5 - 0.0000001) rarity = 100.0 * lower;
+    else if (upper < 0.5 - 0.0000001) rarity = 100.0 * (1.0 - upper);
+    local weight = ::Math.minf(n / 10.0, 1.0);
+    local text = "Even";
+    if (rarity != 50.0)
+    {
+        // Round group sizes up, allowing only float noise at integer boundaries.
+        local tail = rarity < 50.0 ? lower : upper;
+        local group = ::Math.max(1, ::Math.ceil(100.0 * tail - 0.0001).tointeger());
+        text = (rarity < 50.0 ? "Bottom " : "Top ") + group + (rarity < 50.0 ? "% unluckiest battles" : "% luckiest battles");
+    }
+    return {n = n, rarity = rarity, weight = weight, marker = 50.0 + (rarity - 50.0) * weight,
+        emphasis = 0.5 + 0.5 * weight, text = text,
+        swing = (ours.hits - ours.expected) - (theirs.hits - theirs.expected), ours = ours, theirs = theirs};
 };

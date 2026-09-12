@@ -26,7 +26,7 @@ xBro is a small, solo-maintained native Battle Brothers mod. The product owner d
 - Keep state and mutation at the owning boundary. Fix root causes. Add a dependency or layer only for a demonstrated need.
 - State the invariant or scenario, write the smallest useful proof, implement, and verify. Keep tests focused on behavior: exclusions, arithmetic against hand-computed cases, lifecycle resets, settings, and stale callbacks.
 - Avoid tests for static copy, CSS, or DOM structure. Do not retain historical suites as release gates when they duplicate stronger behavior checks.
-- Substantial code changes require three independent final-diff reviews in parallel: correctness/architecture, simplicity/ownership, and changed-line value. Resolve material findings, subtract unnecessary work, and rerun proportionate checks. Documentation-only work does not require this ceremony.
+- Reserve the three-agent review for the complete substantial change at the end of the task, once implementation and ordinary checks are finished. Review the complete final diff in parallel for correctness/architecture, simplicity/ownership, and changed-line value. Do not run this ceremony for small changes, intermediate steps, or follow-up fixes; use proportionate local checks for those. Resolve material findings, subtract unnecessary work, and rerun affected checks without restarting the three-agent review. Documentation-only work does not require this ceremony.
 - Keep maintained docs small. Store temporary status, plans, questions, evidence, tools, dependencies, saves, captures, and generated output only in ignored paths.
 
 ## UI

@@ -4,6 +4,7 @@
 ::Errors <- [];
 ::logError <- function( _text ) { ::Errors.push(_text); };
 ::Logs <- [];
+::ActorIDs <- 0;
 ::logInfo <- function( _text ) { ::Logs.push(_text); };
 
 function check( _value, _message ) { if (!_value) throw _message; }
@@ -25,10 +26,10 @@ function fields( _line )
     return out;
 }
 
-// Settings double: XBro reads Enabled/MinAttacks through Mod.ModSettings at use time.
+// Settings double: XBro reads Enabled through Mod.ModSettings at use time.
 function settings( _values = null )
 {
-    local values = {Enabled = true, MinAttacks = 8};
+    local values = {Enabled = true};
     if (_values != null) foreach (key, value in _values) values[key] = value;
     ::XBro.Mod <- {ModSettings = {getSetting = function( _id ) { local v = values[_id]; return {getValue = @() v}; }}};
     return values;
@@ -41,15 +42,18 @@ function world( _blocked = null, _difficulty = 1 )
     ::Const <- {Faction = {Player = 1}, Tactical = {Common = {getBlockedTiles = function( _a, _b, _f ) { return blocked; }}}};
     ::World <- {Assets = {getCombatDifficulty = @() _difficulty}};
     ::Tactical <- {TopbarRoundInformation = null};
+    ::Time <- {getRound = @() 1};
 }
 
 function tile( _distance ) { return {distance = _distance, getDistanceTo = function( _other ) { return this.distance; }}; }
 
 function actor( _faction, _distance = 1 )
 {
-    return {faction = _faction, alive = true, attackable = true, ableToDie = true, hp = 50, tileRef = tile(_distance),
+    ::ActorIDs++;
+    return {id = ::ActorIDs, getID = function() { return this.id; }, faction = _faction, alive = true, attackable = true, ableToDie = true, hp = 50, tileRef = tile(_distance),
         name = _faction == 1 ? "Our Bro" : "Foe " + _faction, getName = function() { return this.name; },
         getFaction = function() { return this.faction; }, isAlive = function() { return this.alive; },
+        isAlliedWith = function( _other ) { return this.faction == _other.getFaction(); },
         isAttackable = function() { return this.attackable; }, isAbleToDie = function() { return this.ableToDie; },
         getHitpoints = function() { return this.hp; }, isPlayerControlled = function() { return this.faction == 1; },
         getTile = function() { return this.tileRef; }, reroll = 0,
@@ -58,7 +62,7 @@ function actor( _faction, _distance = 1 )
 
 function skill( _chance, _ranged = false, _projectile = false )
 {
-    return {m = {IsShowingProjectile = _projectile}, chance = _chance, ranged = _ranged, hitchance = true, priced = 0,
+    return {getID = @() "actives.test", m = {IsShowingProjectile = _projectile}, chance = _chance, ranged = _ranged, hitchance = true, priced = 0,
         name = _ranged ? "Quick Shot" : "Slash", getName = function() { return this.name; }, isUsingHitchance = function() { return this.hitchance; }, isRanged = function() { return this.ranged; },
         getHitchance = function( _target ) { this.priced++; return this.chance; }};
 }

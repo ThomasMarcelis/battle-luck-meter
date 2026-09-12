@@ -1,101 +1,118 @@
 local X = ::XBro, cases = {};
 
-function lines( _event = null )
+function events( _event )
 {
     local out = [];
     foreach (line in ::Logs)
     {
-        check(line.find("[xBro] battle=") == 0 && line.find("<") == null, "prefixed, single line, no markup: " + line);
-        local f = fields(line);
-        if (_event == null ? ("attack" in f) : f.event == _event) out.push(f);
+        local e = fields(line);
+        if (e.event == _event) out.push(e);
     }
     return out;
 }
 
-cases.begin_numbers_battles_and_writes_a_start_line <- function()
+cases.all_attempts_have_a_reason_and_result_including_disabled_and_excluded <- function()
 {
-    X.record("ours", 0.5, true);
-    local first = X.Battle.id;
-    X.begin();
-    check(X.Battle.id == first + 1 && X.Battle.ours.n == 0, "next id, accumulators wiped");
-    X.begin();
-    local starts = lines("start");
-    check(starts.len() == 2 && starts[1].battle == "" + (first + 2) && starts[1].version == X.Version, "one start line per battle with the version");
-    X.reset();
-    check(X.Battle.id == first + 2 && ::Logs.len() == 2, "reset keeps the number and logs nothing");
+    world(); local values = settings(); X.begin();
+    local a = actor(1), b = actor(2), weapon = skill(70);
+    local t = X.price(weapon, a, b, true);
+    check(events("attempt").len() == 1 && events("result").len() == 0, "attempt persisted before native result");
+    X.settle(t, true);
+    X.settle(X.price(weapon, a, a, true), false);
+    values.Enabled = false;
+    X.settle(X.price(weapon, a, b, true), false);
+    local attempts = events("attempt"), results = events("result");
+    check(attempts.len() == 3 && results.len() == 3 && attempts[1].reason == "outside_sample" && attempts[2].reason == "disabled", "every call has a reason");
+    check(weapon.priced == 1 && X.Battle.ours.n == 1 && X.Battle.excluded == 2, "logging does not price excluded calls");
+    check(results[0].counted == "1" && results[1].counted == "0" && results[2].attempt == "3", "results linked");
+    check(attempts[0].by_id != attempts[0].on_id && attempts[0].skill_id == "actives.test" && attempts[0].round == "1", "stable IDs and round");
 };
 
-cases.each_settled_attack_writes_one_parseable_line <- function()
+cases.pricing_inputs_retain_fractional_chance_difficulty_and_reroll <- function()
 {
-    world(); settings();
-    X.begin();
-    X.settle(X.price(skill(70), actor(1), actor(2), true), true);
-    X.settle(X.price(skill(35, true), actor(3), actor(1), true), false);
-    local a = lines();
-    check(a.len() == 2 && a[0].battle == "" + X.Battle.id && a[0].attack == "1" && a[1].attack == "2", "numbered within the battle");
-    check(a[0].side == "ours" && a[0].hit == "1" && a[0].chance == "70" && a[0].p == "0.700000", "our hit at the engine chance");
-    check(a[0].skill == "Slash" && a[0].by == "Our Bro" && a[0].on == "Foe 2", "who did what to whom");
-    check(a[1].side == "theirs" && a[1].hit == "0" && a[1].chance == "35" && a[1].p == "0.350000" && a[1].skill == "Quick Shot", "their miss");
-    world(null, 0);
+    world(null, 0); settings(); X.begin();
     local lucky = actor(1); lucky.reroll = 10;
-    X.settle(X.price(skill(50), actor(2), lucky, true), true);
-    a = lines();
-    check(a[2].chance == "50" && a[2].p == "0.425250", "engine chance stays raw; p carries the beginner shift and the reroll");
+    X.settle(X.price(skill(50.5), actor(2), lucky, true), true);
+    local e = events("attempt")[0];
+    check(e.chance == "50.5" && e.difficulty == "0" && e.shift == "-5" && e.by_controlled == "0" && e.on_controlled == "1", "pricing inputs");
+    check(e.reroll == "10" && near(e.initial_p.tofloat(), 0.455, 1e-6) && near(e.p.tofloat(), 0.4302025, 1e-6), "current model completely explained");
+    local state = events("state")[0];
+    check(near(state.theirs_variance.tofloat(), 0.4302025 * (1.0 - 0.4302025), 1e-6), "variance logged");
 };
 
-cases.the_update_and_the_log_line_never_block_each_other <- function()
+cases.alliance_evidence_does_not_change_the_current_sample <- function()
 {
-    world(); settings();
-    local live = {pushed = 0, isNull = @() false, xbroPush = function( _data ) { this.pushed++; }};
-    ::Tactical.TopbarRoundInformation = live;
-    ::logInfo = function( _text ) { throw "log.html on fire"; };
-    X.settle(X.price(skill(70), actor(1), actor(2), true), true);
-    check(X.Battle.ours.hits == 1 && live.pushed == 1, "recorded and pushed although the log failed");
-    check(::Errors.len() == 1 && ::Errors[0].find("log.html on fire") != null, "log failure reported through logError");
+    world(); settings(); X.begin();
+    local a = actor(1), ally = actor(3);
+    a.isAlliedWith = @(_other) true;
+    X.settle(X.price(skill(70), a, ally, true), true);
+    check(events("attempt")[0].allied == "1" && X.Battle.ours.hits == 1, "alliance is observed without changing faction rule");
+    a.isAlliedWith = function( _other ) { throw "alliance unavailable"; };
+    X.settle(X.price(skill(70), a, ally, true), false);
+    check(X.Battle.ours.n == 2 && events("error").top().phase == "alliance", "diagnostic failure preserves sampling");
+};
+
+cases.ui_receipts_preserve_origin_after_reset_and_failures_are_contained <- function()
+{
+    world(); settings(); X.begin();
+    local line = "[xBroUI] schema=3 ui_seq=8 battle=" + X.Battle.id + " event=ui status=\"destroyed\"";
+    X.begin(); local seq = X.Sequence;
+    X.uiReceipt(line);
+    check(::Logs.top() == line && X.Sequence == seq && X.Battle.ours.n == 0, "late receipt keeps its browser sequence and battle");
+    X.uiReceipt(line + "\nforged line");
+    check(events("error").top().phase == "ui_receipt", "multiline receipt rejected");
+    ::logInfo = function( _text ) { throw "disk failed"; };
+    X.uiReceipt(line);
+    check(::Errors.len() > 0 && X.Battle.ours.n == 0, "journal failure cannot change combat state or escape callback");
+};
+
+cases.nested_calls_settle_in_native_return_order_and_stale_results_cannot_leak <- function()
+{
+    world(); settings(); X.begin();
+    local outer = X.price(skill(70), actor(1), actor(2), true);
+    local inner = X.price(skill(30), actor(2), actor(1), true);
+    X.settle(inner, false); X.settle(outer, true);
+    local r = events("result");
+    check(r[0].attempt == "2" && r[1].attempt == "1" && r[1].attack == "2", "nested IDs preserve native order");
+    local stale = X.price(skill(80), actor(1), actor(2), true);
+    X.begin(); X.settle(stale, true);
+    check(X.Battle.ours.n == 0 && events("error").top().phase == "settle", "stale result reported without changing new battle");
+};
+
+cases.logging_failure_and_ui_failure_never_suppress_native_sample <- function()
+{
+    world(); settings(); X.begin();
+    local t = X.price(skill(70), actor(1), actor(2), true);
+    ::logInfo = function( _text ) { throw "disk failed"; };
+    X.settle(t, true);
+    check(X.Battle.ours.n == 1 && X.Battle.errors > 0 && ::Errors.len() > 0, "failed disk still counts");
     ::logInfo = function( _text ) { ::Logs.push(_text); };
-    X.push = function() { throw "push exploded"; };
+    X.push = function() { throw "UI failed"; };
     X.settle(X.price(skill(70), actor(1), actor(2), true), false);
-    check(X.Battle.ours.n == 2 && ::Logs.len() == 1 && fields(::Logs[0]).hit == "0", "recorded and logged although the push failed");
-    local nameless = actor(2); nameless.getName = function() { throw "no name"; };
-    X.settle(X.price(skill(70), actor(1), nameless, true), true);
-    check(X.Battle.ours.n == 3 && fields(::Logs[1]).on == "?", "an unreadable name is logged as ? and the attack still counts");
+    check(X.Battle.ours.n == 2 && events("result").top().hit == "0" && events("error").top().phase == "push", "UI failure still records and logs");
 };
 
-cases.battle_end_writes_the_tooltip_numbers <- function()
+cases.names_are_escaped_without_affecting_the_attack <- function()
 {
-    settings();
-    feed("theirs", [35, 6, 50, 82, 82, 64, 21, 18], [1, 0, 1, 1, 1, 1, 1, 1]);
-    X.finish();
-    local e = lines("end");
-    check(e.len() == 1 && e[0].battle == "" + X.Battle.id, "one end line");
-    check(e[0].ours_n == "0" && e[0].ours_hits == "0" && e[0].ours_expected == "0.000", "our side");
-    check(e[0].theirs_n == "8" && e[0].theirs_hits == "7" && e[0].theirs_expected == "3.580", "their side");
-    check(near(e[0].z.tofloat(), -2.92, 0.005) && e[0].rank == "99" && e[0].pending == "0" && e[0].min_attacks == "8" && e[0].text == "Unlucky 99%", "verdict " + ::Logs.top());
-    settings({MinAttacks = 12});
-    X.finish();
-    e = lines("end");
-    check(e[1].pending == "1" && e[1].min_attacks == "12" && e[1].text == "", "pending verdict is logged as pending");
+    world(); settings(); X.begin();
+    local a = actor(1); a.name = "A\" p=0 x=\"<>&%\n\\";
+    X.settle(X.price(skill(70), a, actor(2), true), true);
+    local e = events("attempt")[0];
+    check(e.by == "A%22 p=0 x=%22%3C%3E%26%25%0A%5C" && near(e.p.tofloat(), 0.7, 1e-6), "escaped names cannot inject fields or HTML");
+    local b = actor(2); b.getName = function() { throw "unreadable name"; };
+    X.settle(X.price(skill(70), actor(1), b, true), false);
+    check(X.Battle.ours.n == 2 && events("error").top().phase == "identity", "missing decoration fails evidence, not the meter");
 };
 
-// Acceptance: with only the attack lines, a reader rebuilds the battle and lands on the same end line.
-cases.end_line_is_reproducible_from_the_attack_lines <- function()
+cases.end_contains_counters_and_duplicate_end_is_an_error <- function()
 {
-    world(null, 0); settings();
-    local lucky = actor(1); lucky.reroll = 10;
-    local script = [[skill(82), actor(1), actor(2), true], [skill(64), actor(1), actor(2), false], [skill(35, true), actor(2, 3), actor(1), true],
-        [skill(50), actor(3), lucky, true], [skill(21), actor(2), lucky, false], [skill(95), actor(1), actor(3), true],
-        [skill(6), actor(2), actor(1), true], [skill(60, true, true), actor(1, 4), actor(2), true], [skill(18), actor(2), actor(1), false]];
-    X.begin();
-    foreach (step in script) X.settle(X.price(step[0], step[1], step[2], true), step[3]);
+    world(); settings(); X.begin();
+    X.settle(X.price(skill(50), actor(1), actor(2), true), true);
     X.finish();
-    local written = ::Logs.top(), attacks = lines();
-    check(attacks.len() == 9, "every attack reached the log");
-    X.begin();
-    foreach (a in attacks) X.record(a.side, a.p.tofloat(), a.hit == "1");
+    local e = events("end")[0];
+    check(e.attempts == "1" && e.results == "1" && e.errors == "0" && e.ours_n == "1" && near(e.ours_variance.tofloat(), 0.25, 1e-6), "end counters and variance");
     X.finish();
-    local rebuilt = fields(::Logs.top()), original = fields(written);
-    foreach (key, value in original) if (key != "battle") check(rebuilt[key] == value, key + ": " + value + " rebuilt as " + rebuilt[key]);
-    check(original.theirs_n == "5" && original.ours_hits == "3" && original.text != "", "scenario exercised both sides and a verdict");
+    check(events("end").len() == 1 && events("error").top().phase == "finish", "duplicate lifecycle call surfaced");
 };
 
 return cases;

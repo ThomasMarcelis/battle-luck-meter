@@ -84,17 +84,17 @@ cases.price_then_settle_records_the_native_outcome <- function()
     X.settle(X.price(weapon, actor(1), actor(2), false), false);
     check(X.Battle.ours.n == 2 && X.Battle.ours.hits == 1 && near(X.Battle.ours.sumP, 1.4, 1e-6), "recorded");
     check(weapon.priced == 2 && ::Errors.len() == 0, "priced once per attack without errors");
-    check(X.price(skill(70), actor(2), actor(3), true) == null, "excluded attack prices to nothing");
+    check(X.price(skill(70), actor(2), actor(3), true).sample == null, "excluded attack prices to nothing");
     settings({Enabled = false});
     local off = skill(70);
-    check(X.price(off, actor(1), actor(2), true) == null && off.priced == 0, "disabled meter neither prices nor records");
+    check(X.price(off, actor(1), actor(2), true).sample == null && off.priced == 0, "disabled meter neither prices nor records");
 };
 
 cases.capture_failures_are_logged_not_thrown <- function()
 {
     world(); settings();
     local broken = skill(70); broken.getHitchance = function( _t ) { throw "pricing exploded"; };
-    check(X.price(broken, actor(1), actor(2), true) == null, "failed pricing yields no trial");
+    check(X.price(broken, actor(1), actor(2), true).sample == null, "failed pricing yields no trial");
     check(::Errors.len() == 1 && ::Errors[0].find("pricing exploded") != null, "failure logged");
     X.push = function() { throw "push exploded"; };
     X.settle(X.price(skill(70), actor(1), actor(2), true), true);
