@@ -1,5 +1,5 @@
 ::XBro <- {
-    ID = "mod_xbro", Name = "xBro", Version = "0.3.1",
+    ID = "mod_xbro", Name = "xBro", Version = "0.4.0",
     Battles = 0, Battle = null, Sequence = 0, Pushes = 0
 };
 
