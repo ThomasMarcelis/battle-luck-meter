@@ -44,6 +44,7 @@
         }
     }
     e.chance <- _skill.getHitchance(_target);
+    e.chance_type <- typeof e.chance;
     e.difficulty <- ("Assets" in ::World) && ::World.Assets != null ? ::World.Assets.getCombatDifficulty() : -1;
     e.shift <- 0;
     if (e.difficulty == 0)
@@ -128,7 +129,7 @@
     }
 };
 
-// Check every intermediate total, rarity, warm-up and readout.
+// Check every intermediate total, rarity, evidence weight and readout.
 ::XBro.checkpoint <- function( _event )
 {
     local s = this.summary(), b = this.Battle;

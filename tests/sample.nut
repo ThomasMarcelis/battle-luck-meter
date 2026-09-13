@@ -34,9 +34,7 @@ world(); local values = settings();
     xbroPush = function( data ) {
         this.last = data;
         receipt({origin_battle = data.battle, push = data.push, view = data.battle, surface = "battle", status = "rendered",
-            display = data.enabled ? "" : "none", emphasis = data.emphasis,
-            ours_percent = data.ours_percent, theirs_percent = data.theirs_percent, ours_tone = data.ours_tone, theirs_tone = data.theirs_tone,
-            left = data.marker + "%"});
+            display = data.enabled ? "" : "none", emphasis = data.emphasis, left = data.marker + "%"});
     }
 };
 function closeBattle()
@@ -46,7 +44,6 @@ function closeBattle()
     {
         receipt({origin_battle = result.battle, push = result.push, view = 1000 + result.battle, surface = "results", status = "rendered",
             display = "", emphasis = result.emphasis, left = result.marker + "%",
-        ours_percent = result.ours_percent, theirs_percent = result.theirs_percent, ours_tone = result.ours_tone, theirs_tone = result.theirs_tone,
             text = result.text, ours = result.ours, theirs = result.theirs, swing = result.swing, sample = result.sample});
         receipt({origin_battle = result.battle, push = result.push, view = 1000 + result.battle, surface = "results", status = "destroyed"});
     }
@@ -64,7 +61,6 @@ for (local v = 100; v < 102; v++)
 {
     receipt({origin_battle = result.battle, push = result.push, view = v, surface = "results", status = "rendered",
         display = "", emphasis = result.emphasis, left = result.marker + "%",
-        ours_percent = result.ours_percent, theirs_percent = result.theirs_percent, ours_tone = result.ours_tone, theirs_tone = result.theirs_tone,
         text = result.text, ours = result.ours, theirs = result.theirs, swing = result.swing, sample = result.sample});
     receipt({origin_battle = result.battle, push = result.push, view = v, surface = "results", status = "destroyed"});
 }
@@ -101,6 +97,8 @@ X.tooltip(); X.finish(); closeBattle();
 // Empty and one-attack results retain neutral placeholders or immediate readouts.
 X.begin(); X.push(); X.tooltip(); X.finish(); closeBattle();
 X.begin(); play([95], [0], true); X.tooltip(); X.finish(); closeBattle();
+// A fractional percentage (1/0.61 = +63.9%) that an integer abs would truncate to +63%.
+X.begin(); play([61], [1], true); X.tooltip(); X.finish(); closeBattle();
 // Settings outside a closed battle must not require an unavailable topbar receipt.
 ::Tactical.TopbarRoundInformation = null;
 values.Enabled = false;

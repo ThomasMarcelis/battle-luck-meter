@@ -1,5 +1,8 @@
-::Math <- {floor = floor, ceil = ceil, pow = pow, round = @(v) floor(v + 0.5), abs = @(v) v < 0 ? -v : v,
-    max = @(a, b) a > b ? a : b, min = @(a, b) a < b ? a : b, maxf = @(a, b) a > b ? a : b, minf = @(a, b) a < b ? a : b,
+// Engine Math.abs/min/max are integer bindings: arguments truncate towards zero
+// (observed probes abs(-1.75)=1, min(95, 74.5)=74, max(5, 74.5)=74). Only minf/maxf keep floats.
+::Math <- {floor = floor, ceil = ceil, pow = pow, round = @(v) floor(v + 0.5), abs = @(v) v.tointeger() < 0 ? -v.tointeger() : v.tointeger(),
+    max = @(a, b) a.tointeger() > b.tointeger() ? a.tointeger() : b.tointeger(), min = @(a, b) a.tointeger() < b.tointeger() ? a.tointeger() : b.tointeger(),
+    maxf = @(a, b) a > b ? a : b, minf = @(a, b) a < b ? a : b,
     rand = function( ... ) { throw "Math.rand consumed by xBro"; }};
 ::Errors <- [];
 ::logError <- function( _text ) { ::Errors.push(_text); };

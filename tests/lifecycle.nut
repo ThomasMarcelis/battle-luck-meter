@@ -27,52 +27,58 @@ cases.state_presents_immediate_values_even_when_hidden <- function()
     check(state.marker == 50.0 && near(state.emphasis, 0.55, 0.00001), "common outcome and warm-up");
 };
 
-cases.tooltip_explains_raw_rarity_and_both_hit_comparisons <- function()
+cases.tooltip_prioritises_rarity_and_keeps_detail_concise <- function()
 {
     world(); settings();
     X.record("ours", 0.95, false);
     local rows = X.tooltip(), s = X.summary();
-    check(rows[1].text == "You: 0/1 hit, 0.95 expected. 100% fewer hits than expected.", "precise early expected hits");
-    check(rows[2].text.find("No hit comparison yet") != null, "undefined side");
-    check(rows[3].text == s.text && near(s.marker, 45.5, 0.0001), "tooltip rarity is undamped");
-    check(rows[4].text.find("0.95 hits against you") != null && rows[5].text.find("1 attack.") != null, "swing and counted sample");
+    check(rows.len() == 6 && rows[1].type == "header" && rows[1].text == s.text, "rarity is the tooltip header");
+    check(rows[2].text == "You: 0/1 hits vs 0.95 expected", "precise expected hits");
+    check(rows[3].text == "Enemy: 0/0 hits vs 0.00 expected", "empty side stays concise");
+    check(rows[4].text == "Net: 0.95 hits against you." && rows[5].text == "Small sample: 1 attack counted.", "concise context");
+    check(near(s.marker, 50.0 - 45.0 / 11.0, 0.0001) && rows[1].text == "Bottom 5% of outcomes at these odds", "tooltip header is the exact tail, bar is weighted");
     feed("theirs", array(9, 50), array(9, 0));
     rows = X.tooltip();
-    check(rows[2].text.find("100% fewer") != null && rows[5].text == "Counted attacks: 10.", "misses end warm-up too");
+    check(rows[3].text == "Enemy: 0/9 hits vs 4.50 expected" && rows[5].text == "10 attacks counted.", "misses end warm-up too");
 };
 
-cases.result_payload_uses_completed_battle_and_preserves_short_battle_damping <- function()
+cases.result_payload_uses_completed_battle_and_shows_the_exact_tail <- function()
 {
     world(); local values = settings(); X.begin();
     check(X.resultState() == null, "no result from an unfinished battle");
     feed("ours", array(2, 50), array(2, 1));
     local live = X.state(); X.finish(); local data = X.resultState();
     check(data.enabled && data.ours_percent == "+100%" && data.theirs_percent == "—", "short battle readouts");
-    check(data.marker == live.marker && data.emphasis == live.emphasis && near(data.marker, 55.0, 0.0001), "same short-battle damping");
-    check(data.swing == X.tooltip()[4].text && data.sample == X.tooltip()[5].text, "overview carries the same context");
-    check(data.text == X.tooltip()[3].text, "result and tooltip share undamped rarity");
+    check(near(live.marker, 50.0 + 25.0 / 6.0, 0.0001) && near(live.emphasis, 0.6, 0.00001), "live bar is weighted and warming");
+    check(data.marker == 75.0 && data.emphasis == 1.0 && data.text == "Top 25% of outcomes at these odds", "overview shows the raw tail at full emphasis");
+    check(data.swing == "Net hit swing: 1.00 hits in your favour." && data.sample == "Small sample: 2 attacks.", "overview context without damping claims");
+    check(data.text == X.tooltip()[1].text, "result and tooltip share undamped rarity");
     check(data.ours == "You: 2 hits vs 1.00 expected" && data.theirs == "Enemy: 0 hits vs 0.00 expected", "concise final hit totals");
     values.Enabled = false; check(!X.resultState().enabled, "disabled result");
     X.begin(); check(X.resultState() == null, "next battle clears availability");
     X.finish();
     check(X.resultState().ours_percent == "—" && X.resultState().theirs_percent == "—", "empty battle");
+    check(X.resultState().marker == 50.0 && X.resultState().emphasis == 1.0, "empty overview is neutral at full emphasis");
+    X.begin(); check(X.state().marker == 50.0 && X.state().emphasis == 0.5 && X.summary().weight == 0.0, "next battle restarts the weighting");
+    X.finish();
     check(X.resultState().swing == "" && X.resultState().sample == "", "no fabricated context for empty battle");
-    check(X.tooltip()[3].text == X.resultState().text, "empty tooltip does not call an unmeasured battle even");
+    local emptyRows = X.tooltip();
+    check(emptyRows.len() == 2 && emptyRows[1].text == X.resultState().text, "empty tooltip only reports the empty state");
     check(X.resultState().text == "No attacks recorded", "empty battle has no verdict");
-    check(data.ours_percent == "+100%" && near(data.marker, 55.0, 0.0001), "old payload has no live references");
+    check(data.ours_percent == "+100%" && data.marker == 75.0, "old payload has no live references");
 };
 
 cases.net_swing_direction_and_rounded_zero_stay_consistent <- function()
 {
     world(); settings();
     X.record("ours", 0.999, true);
-    check(X.tooltip()[4].text == "Net hit swing: even.", "rounded positive zero is even");
+    check(X.tooltip()[4].text == "Net: even.", "rounded positive zero is even");
     X.record("ours", 0.002, false);
-    check(X.tooltip()[4].text == "Net hit swing: even.", "rounded negative zero is even");
+    check(X.tooltip()[4].text == "Net: even.", "rounded negative zero is even");
     X.record("theirs", 0.5, false);
-    check(X.tooltip()[4].text.find("0.50 hits in your favour") != null, "enemy miss helps player");
+    check(X.tooltip()[4].text == "Net: 0.50 hits in your favour.", "enemy miss helps player");
     X.finish();
-    check(X.resultState().swing == X.tooltip()[4].text, "overview shares direction");
+    check(X.resultState().swing == "Net hit swing: 0.50 hits in your favour.", "overview retains full direction wording");
 };
 
 return cases;

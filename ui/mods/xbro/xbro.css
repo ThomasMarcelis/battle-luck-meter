@@ -5,7 +5,7 @@
     left: 0;
     right: 0;
     width: 22rem;
-    height: 3.8rem;
+    height: 1.6rem;
     position: absolute;
     margin: auto;
 }
@@ -49,36 +49,6 @@
     border-left: 1px solid rgba(230, 211, 174, 0.45);
 }
 
-.tactical-screen .xbro-readouts,
-.tactical-combat-result-screen .xbro-readouts
-{
-    position: absolute;
-    top: 1.3rem;
-    left: 0;
-    right: 0;
-    line-height: 2.2rem;
-    text-align: center;
-    white-space: nowrap;
-}
-
-.tactical-screen .xbro-readout,
-.tactical-combat-result-screen .xbro-readout
-{
-    display: inline-block;
-    margin: 0 0.6rem;
-}
-
-.tactical-screen .xbro-good,
-.tactical-combat-result-screen .xbro-good
-{
-    color: #8fbc59;
-}
-
-.tactical-screen .xbro-bad,
-.tactical-combat-result-screen .xbro-bad
-{
-    color: #e06b58;
-}
 
 /* Keep the summary in the native list's scrollable flow, after every brother. */
 .tactical-combat-result-screen .statistics-panel .xbro-results-list
@@ -124,11 +94,6 @@
     margin: 1.2rem auto 0.8rem;
 }
 
-.tactical-combat-result-screen .xbro-result-luck .xbro-readouts
-{
-    position: static;
-    line-height: 2.8rem;
-}
 
 .tactical-combat-result-screen .xbro-result-verdict
 {
@@ -141,11 +106,6 @@
     line-height: 2.4rem;
 }
 
-.tactical-combat-result-screen .xbro-result-luck .xbro-readout
-{
-    width: 50%;
-    margin: 0;
-}
 
 .tactical-combat-result-screen .xbro-result-side
 {

@@ -49,7 +49,7 @@ function session() {
 }
 
 const luck = {battle: 1, push: 1, surface: 'results', enabled: true, marker: 89.5, emphasis: 1, ours_percent: '+50%', theirs_percent: '-25%', ours_tone: 'good', theirs_tone: 'good',
-    text: 'Top 11% luckiest battles', swing: 'Net hit swing: 3.00 hits in your favour.', sample: 'Counted attacks: 16.', ours: 'You: 6 hits vs 4.00 expected', theirs: 'Enemy: 3 hits vs 4.00 expected'};
+    text: 'Top 11% of outcomes at these odds', swing: 'Net hit swing: 3.00 hits in your favour.', sample: 'Counted attacks: 16.', ours: 'You: 6 hits vs 4.00 expected', theirs: 'Enemy: 3 hits vs 4.00 expected'};
 
 test('six, twelve and sixteen brothers retain native data across result reloads', () => {
     const s = session();
@@ -58,7 +58,9 @@ test('six, twelve and sixteen brothers retain native data across result reloads'
         assert.equal(s.screen.show({statistics, xbroLuck: luck}), 'shown');
         assert.equal(s.calls.at(-1), statistics);
         const view = s.panel.xbroView;
-        assert.equal(view.oursPercent.content, luck.ours_percent);
+        assert.equal(view.readouts, undefined);
+        assert.equal(view.oursPercent, undefined);
+        assert.equal(view.theirsPercent, undefined);
         assert.equal(view.verdict.content, luck.text);
         assert.equal(view.swing.content, luck.swing);
         assert.equal(view.sample.content, luck.sample);
@@ -78,16 +80,17 @@ test('six, twelve and sixteen brothers retain native data across result reloads'
         assert.equal(view.root.tooltip, null);
         assert.equal(view.root.parent, null);
         assert.notEqual(s.panel.xbroView, view);
-        assert.equal(s.panel.xbroView.theirsPercent.content, luck.theirs_percent);
+        assert.equal(s.panel.xbroView.readouts, undefined);
     }
     assert.deepEqual(s.errors, []);
 });
 
-test('early, disabled and absent result payloads replace the previous result', () => {
+test('percentage payload changes never create result badges; disabled and absent results still clear', () => {
     const s = session();
     for (const percent of ['+100%', '—', '0%', '-100%']) {
         s.screen.show({statistics: [], xbroLuck: {...luck, marker: 45.5, emphasis: 0.55, ours_percent: percent}});
-        assert.equal(s.panel.xbroView.oursPercent.content, percent);
+        assert.equal(s.panel.xbroView.readouts, undefined);
+        assert.equal(s.panel.xbroView.marker.style.left, '45.5%');
     }
     s.screen.show({statistics: [], xbroLuck: {...luck, text: 'No attacks recorded', ours_percent: '—', theirs_percent: '—', swing: '', sample: ''}});
     assert.equal(s.panel.xbroView.verdict.content, 'No attacks recorded');

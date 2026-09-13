@@ -1,5 +1,19 @@
 local X = ::XBro, cases = {};
 
+cases.native_outcome_and_math_bindings_are_logged_without_changing_payloads <- function()
+{
+    world(); settings(); X.begin();
+    local start = fields(::Logs.top());
+    check(start.probe_abs == "1" && start.probe_min == "74" && start.probe_max == "74", "integer engine bindings are journaled");
+    check(start.version == X.Version && start.marker_model == "evidence_weight_v1", "start identifies the live marker model");
+    X.finish();
+    local native = {result = "win", title = "Victory", subTitle = "The enemy was destroyed in 4 rounds"};
+    local payload = X.resultState(native), entry = fields(::Logs.top());
+    check(entry.native_result == native.result && entry.native_title == native.title
+        && entry.native_subtitle == native.subTitle, "native outcome retained verbatim");
+    check(native.len() == 3 && !("native_result" in payload), "source and displayed payload preserved");
+};
+
 function events( _event )
 {
     local out = [];

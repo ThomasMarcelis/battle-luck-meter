@@ -36,71 +36,88 @@
         ours_percent = s.ours.percent, ours_tone = s.ours.tone, theirs_percent = s.theirs.percent, theirs_tone = s.theirs.tone};
 };
 
-::XBro.sideText <- function( _label, _side, _compact = false )
+::XBro.sideText <- function( _label, _side )
 {
-    if (_compact) return _label + ": " + _side.hits + (_side.hits == 1 ? " hit vs " : " hits vs ")
+    return _label + ": " + _side.hits + (_side.hits == 1 ? " hit vs " : " hits vs ")
         + ::format("%.2f", _side.expected) + " expected";
-    local text = _label + ": " + _side.hits + "/" + _side.n + " hit, " + ::format("%.2f", _side.expected) + " expected";
-    if (_side.change == null) return text + ". No hit comparison yet.";
-    if (_side.change == 0) return text + ". About as many hits as expected.";
-    return text + ". " + ::Math.abs(_side.change) + "% " + (_side.change > 0 ? "more" : "fewer") + " hits than expected.";
 };
 
-// Use the same context on hover and in the final overview.
 ::XBro.sampleText <- function( _n )
 {
     if (_n == 0) return "No attacks recorded.";
-    return _n < 10 ? "Small sample: " + _n + (_n == 1 ? " attack." : " attacks.")
-        + " Below 10 attacks, the bar stays closer to the centre." : "Counted attacks: " + _n + ".";
+    return _n < 10 ? "Small sample: " + _n + (_n == 1 ? " attack." : " attacks.") : "Counted attacks: " + _n + ".";
 };
 
-::XBro.swingText <- function( _swing )
+::XBro.swingText <- function( _swing, _label = "Net hit swing" )
 {
-    local amount = ::format("%.2f", ::Math.abs(_swing));
-    if (amount == "0.00") return "Net hit swing: even.";
-    return "Net hit swing: " + amount + " hits " + (_swing > 0 ? "in your favour." : "against you.");
+    local amount = ::format("%.2f", this.abs(_swing));
+    if (amount == "0.00") return _label + ": even.";
+    return _label + ": " + amount + " hits " + (_swing > 0 ? "in your favour." : "against you.");
 };
 
-::XBro.logPush <- function( _data, _status )
+::XBro.tooltipSideText <- function( _label, _side )
+{
+    return _label + ": " + _side.hits + "/" + _side.n + " hits vs " + ::format("%.2f", _side.expected) + " expected";
+};
+
+::XBro.tooltipSampleText <- function( _n )
+{
+    if (_n == 0) return "No attacks recorded.";
+    if (_n < 10) return "Small sample: " + _n + (_n == 1 ? " attack counted." : " attacks counted.");
+    return _n + " attacks counted.";
+};
+
+::XBro.logPush <- function( _data, _status, _combatInformation = null )
 {
     local fields = clone _data;
     delete fields.battle;
     fields.attack <- this.Battle.ours.n + this.Battle.theirs.n;
     fields.status <- _status;
+    // Journal the already-built native outcome without querying actors or changing UI
+    // data. A missing slot is a diagnostic failure, never a lost payload.
+    if (_combatInformation != null) try
+    {
+        fields.native_result <- _combatInformation.result;
+        fields.native_title <- _combatInformation.title;
+        fields.native_subtitle <- _combatInformation.subTitle;
+    }
+    catch (error) { this.fail("native_outcome", error); }
     this.log("push", fields);
 };
 
 // The capture boundary stops recording at battle end. No actor references or
-// saved history enter JS; short battles retain exactly the live meter's damping.
-::XBro.resultState <- function()
+// saved history enter JS. The overview shows the exact result, not the live weighting.
+::XBro.resultState <- function( _combatInformation = null )
 {
     if (!this.Battle.ended) return null;
     local data = this.state(), s = this.summary();
+    data.marker = s.rarity; data.emphasis = 1.0;
     data.text <- s.n == 0 ? "No attacks recorded" : s.text;
     data.swing <- s.n == 0 ? "" : this.swingText(s.swing);
     data.sample <- s.n == 0 ? "" : this.sampleText(s.n);
-    data.ours <- this.sideText("You", s.ours, true); data.theirs <- this.sideText("Enemy", s.theirs, true);
+    data.ours <- this.sideText("You", s.ours); data.theirs <- this.sideText("Enemy", s.theirs);
     data.battle <- this.Battle.id; data.push <- ++this.Pushes; data.surface <- "results";
-    this.logPush(data, "requested");
+    this.logPush(data, "requested", _combatInformation);
     return data;
 };
 
 ::XBro.tooltip <- function()
 {
     local s = this.summary();
-    local swing = this.swingText(s.swing), sample = this.sampleText(s.n);
-    local interpretation = "Compared with battles with the same hit chances; equally lucky or unlucky outcomes count too. Rarity uses the full calculation, before the bar's early damping.";
+    local ours = this.tooltipSideText("You", s.ours), theirs = this.tooltipSideText("Enemy", s.theirs);
+    local swing = this.swingText(s.swing, "Net"), sample = this.tooltipSampleText(s.n);
     local rows = [
         {id = 1, type = "title", text = "Battle luck"},
-        {id = 2, type = "text", text = this.sideText("You", s.ours)},
-        {id = 3, type = "text", text = this.sideText("Enemy", s.theirs)},
-        {id = 4, type = "text", text = s.n == 0 ? "No attacks recorded" : s.text},
-        {id = 5, type = "text", text = swing},
-        {id = 6, type = "text", text = sample},
-        {id = 7, type = "text", text = interpretation}
+        {id = 2, type = "header", text = s.n == 0 ? "No attacks recorded" : s.text}
     ];
-    this.log("tooltip", {attack = s.n, ours = rows[1].text, theirs = rows[2].text,
-        verdict = rows[3].text, swing = swing, sample = sample, interpretation = interpretation});
+    if (s.n != 0)
+    {
+        rows.push({id = 3, type = "text", text = ours});
+        rows.push({id = 4, type = "text", text = theirs});
+        rows.push({id = 5, type = "text", text = swing});
+        rows.push({id = 6, type = "text", text = sample});
+    }
+    this.log("tooltip", {attack = s.n, ours = ours, theirs = theirs, verdict = rows[1].text, swing = swing, sample = sample});
     return rows;
 };
 

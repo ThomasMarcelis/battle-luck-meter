@@ -42,9 +42,10 @@ class AuditTests(unittest.TestCase):
             out.append(line)
         return out
 
-    def change(self, event, key, value, surface=None):
+    def change(self, event, key, value, surface=None, battle=None):
         lines = self.lines.copy()
-        index = next(i for i,s in enumerate(lines) if f'event={event} ' in s and (surface is None or f'surface="{surface}"' in s))
+        index = next(i for i,s in enumerate(lines) if f'event={event} ' in s and (surface is None or f'surface="{surface}"' in s)
+                     and (battle is None or f' battle={battle} ' in s))
         lines[index], n = re.subn(rf'\b{key}=("[^"]*"|\S+)', f'{key}={value}', lines[index], count=1)
         self.assertEqual(n, 1)
         return lines
@@ -95,8 +96,8 @@ class AuditTests(unittest.TestCase):
     def test_tampering_with_inputs_results_calculations_and_rendering_fails(self):
         for event, key, value in [('attempt','p','0.1'), ('attempt','side','"theirs"'), ('attempt','reason','"blocked"'),
                                   ('result','hit','0'), ('result','counted','0'), ('result','attempt','999'),
-                                  ('state','ours_variance','0.9'), ('state','rarity','9'), ('state','marker','90'), ('state','weight','0.9'), ('state','ours_percent','"+10%"'), ('state','theirs_tone','"good"'),
-                                  ('end','ours_hits','999'), ('push','ours_percent','"invented"'), ('ui','ours_tone','"bad"'), ('ui','emphasis','0.1'), ('ui','left','"99%25"')]:
+                                  ('state','ours_variance','0.9'), ('state','rarity','9'), ('state','marker','90'), ('state','weight','0.9'), ('state','emphasis','1'), ('state','ours_percent','"+10%"'), ('state','theirs_tone','"good"'),
+                                  ('end','ours_hits','999'), ('push','ours_percent','"invented"'), ('ui','emphasis','0.1'), ('ui','left','"99%25"')]:
             with self.subTest(event=event, key=key):
                 status, output = self.replay(self.change(event,key,value))
                 self.assertEqual(status, 1, output)
@@ -166,6 +167,110 @@ class AuditTests(unittest.TestCase):
         status, output = self.replay(lines)
         self.assertEqual(status, 2, output)
         self.assertIn('no results payload observed', output)
+
+    def battle(self, bid):
+        return [s for s in self.lines if f' battle={bid} ' in s]
+
+    def legacy(self, lines):
+        """Rewrite an emitted one-attack battle (0.95 miss) into 0.4.1 form: linear warm-up
+        weight 0.1, marker 45.5, results retaining that damping, old verdict and sample wording."""
+        push_readouts = {}
+        for line in lines:
+            if line.startswith('[xBro]') and ' event=push ' in line:
+                pid = re.search(r'\bpush=(\d+)', line)[1]
+                push_readouts[pid] = {key: re.search(rf'\b{key}=("[^"]*"|\S+)', line)[1]
+                                      for key in audit.READOUT_FIELDS if key not in ('marker', 'emphasis')}
+        out = []
+        for line in lines:
+            line = re.sub(r'version="[^"]*"', 'version="0.4.1"',
+                          line.replace(' marker_model="evidence_weight_v1"', '').replace(' ui_model="bar_only_v1"', ''))
+            if 'event=tooltip ' in line:
+                line += ' interpretation="' + audit.LEGACY_INTERPRETATION.replace("'", "%27") + '"'
+            line = re.sub(r'\bweight=\S+', 'weight=0.1', line)
+            line = re.sub(r'\bmarker=(45\.90909\d*|5(\.\d+)?)(?=\s|$)', 'marker=45.5', line)
+            line = re.sub(r'left="(45\.909\d*|5(\.\d+)?)%25"', 'left="45.5%25"', line)
+            if 'surface="results"' in line:
+                line = re.sub(r'\bemphasis="?1"?(?=\s|$)', 'emphasis=0.55', line)
+                line = line.replace('sample="Small sample: 1 attack."', 'sample="Small sample: 1 attack. Below 10 attacks, the bar stays closer to the centre."')
+            line = line.replace('Bottom 5%25 of outcomes at these odds', 'Bottom 5%25 unluckiest battles')
+            if line.startswith('[xBroUI]') and 'status="rendered"' in line:
+                pid = re.search(r'\bpush=(\d+)', line)[1]
+                line += ''.join(f' {key}={value}' for key, value in push_readouts[pid].items())
+            out.append(line)
+        return self.renumber(out)
+
+    def test_bar_only_ui_model_omits_percentage_receipts_and_rejects_hidden_badges(self):
+        self.assertTrue(any('event=start ' in line and 'version="0.4.3"' in line and
+                            'ui_model="bar_only_v1"' in line for line in self.lines))
+        rendered = [line for line in self.lines if line.startswith('[xBroUI]') and 'status="rendered"' in line]
+        self.assertTrue(rendered)
+        for line in rendered:
+            self.assertFalse(any(re.search(rf'\b{key}=', line) for key in
+                                 ('ours_percent', 'theirs_percent', 'ours_tone', 'theirs_tone')))
+        lines = self.lines.copy()
+        index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'status="rendered"' in line)
+        lines[index] += ' ours_percent="+1900%25"'
+        status, output = self.replay(lines)
+        self.assertEqual(status, 1, output)
+        self.assertIn('bar-only UI receipt contains a percentage readout', output)
+
+    def test_results_show_the_raw_tail_and_live_marker_is_evidence_weighted(self):
+        for key, value in [('marker', '45.9090919'), ('emphasis', '0.55')]:
+            with self.subTest(key=key):
+                status, output = self.replay(self.change('push', key, value, surface='results'))
+                self.assertEqual(status, 1, output)
+                self.assertIn(f'push: {key}', output)
+
+    def test_defective_checkpoint_is_reported_without_losing_the_battle_end(self):
+        status, output = self.replay(self.change('end', 'ours_percent', '"+63%25"', battle=8))
+        self.assertEqual(status, 1, output)
+        findings = [line for line in output.splitlines() if line.startswith(('ERROR:', 'INCOMPLETE:'))]
+        self.assertEqual(len(findings), 1, output)
+        self.assertIn("end: ours_percent: wrote '+63%', derived '+64%'", findings[0])
+
+    def test_current_journals_must_not_carry_legacy_tooltip_wording(self):
+        tooltip = next(i for i, s in enumerate(self.lines) if 'event=tooltip ' in s and ' battle=7 ' in s)
+        for edit in [lambda s: s + ' interpretation="' + audit.LEGACY_INTERPRETATION.replace("'", "%27") + '"',
+                     lambda s: s.replace('swing="Net: 0.95', 'swing="Net hit swing: 0.95'),
+                     lambda s: s.replace('ours="You: 0/1 hits vs 0.95 expected"', 'ours="You: 0/1 hit, 0.95 expected. 100%25 fewer hits than expected."')]:
+            lines = self.lines.copy(); lines[tooltip] = edit(lines[tooltip])
+            self.assertNotEqual(lines[tooltip], self.lines[tooltip])
+            status, output = self.replay(lines)
+            self.assertEqual(status, 1, output)
+            self.assertIn('tooltip', output)
+
+    def test_legacy_marker_model_replays_0_4_1_semantics_and_exposes_its_defects(self):
+        emitted = self.battle(7)
+        self.assertTrue(any('chance=95' in s for s in emitted))
+        legacy = self.legacy(emitted)
+        self.assertNotEqual(legacy, self.renumber(emitted))
+        status, output = self.replay(legacy)
+        self.assertEqual(status, 0, output)
+        self.assertIn('0 errors, 0 model discrepancies, 0 evidence gaps', output)
+        self.assertIn('Bottom 5% unluckiest battles', output)
+        # The same runtime values under the current model are not accepted as 0.4.1 evidence and vice versa.
+        status, output = self.replay(self.renumber([s.replace(' marker_model="evidence_weight_v1"', '') for s in emitted]))
+        self.assertEqual(status, 1, output)
+        self.assertIn('marker: wrote 45.9', output)
+        status, output = self.replay([s.replace('version="0.4.1"', 'version="0.4.2" marker_model="evidence_weight_v1"') for s in legacy])
+        self.assertEqual(status, 1, output)
+        self.assertIn('weight: wrote 0.1', output)
+        # The 0.4.1 integer-abs defect: a 0.95-hit swing shown as even on both surfaces.
+        defective = [re.sub(r'swing="(Net hit swing|Net): 0\.95 hits against you\."', r'swing="\1: even."', s) for s in legacy]
+        self.assertEqual(sum(a != b for a, b in zip(defective, legacy)), 3)
+        status, output = self.replay(defective)
+        self.assertEqual(status, 1, output)
+        self.assertEqual(output.count('net hit swing is not even'), 2, output)
+        # ... and a +63.9% readout truncated to +63%, which the same journal shape must expose.
+        percent = self.legacy(self.battle(8))
+        self.assertEqual(self.replay(percent)[0], 0)
+        defective = [s.replace('ours_percent="+64%25"', 'ours_percent="+63%25"') for s in percent]
+        status, output = self.replay(defective)
+        self.assertEqual(status, 1, output)
+        self.assertIn("ours_percent: wrote '+63%', derived '+64%'", output)
+        status, output = self.replay([s.replace('event=start ', 'event=start marker_model="other" ') for s in legacy])
+        self.assertEqual(status, 1, output)
+        self.assertIn('unsupported marker model', output)
 
     def test_no_battle_is_incomplete(self):
         out = io.StringIO()

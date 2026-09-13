@@ -78,16 +78,17 @@ try
         system.importPersistentSettings();
         check(X.enabled() && !system.getPanel(X.ID).hasSetting("MinAttacks"), "old gate is not registered");
         X.reset(); X.record("ours", 0.95, false);
-        check(X.state().ours_percent == "-100%" && near(X.state().marker, 45.5, 0.0001), "old threshold cannot hide first attack");
+        check(X.state().ours_percent == "-100%" && near(X.state().marker, 50.0 - 45.0 / 11.0, 0.0001), "old threshold cannot hide first attack");
         check(writes == oldWrites && disk.ModSettings[X.ID].MinAttacks == 30, "import leaves stored settings untouched");
         disk.ModSettings = previous; X.reset();
     });
 
     test("msu_tooltip_dispatch_is_dynamic", function() {
         local rows = ::MSU.System.Tooltips.getTooltip(X.ID, "Luck").getUIData({contentType = "msu-generic", modId = X.ID, elementId = "Luck"});
-        check(rows.len() == 7 && rows[5].text == "No attacks recorded.", "empty tooltip");
+        check(rows.len() == 2 && rows[1].type == "header" && rows[1].text == "No attacks recorded", "empty tooltip");
         X.record("ours", 0.5, true);
-        check(::MSU.System.Tooltips.getTooltip(X.ID, "Luck").getUIData({})[1].text == "You: 1/1 hit, 0.50 expected. 100% more hits than expected.", "tooltip reads live state");
+        rows = ::MSU.System.Tooltips.getTooltip(X.ID, "Luck").getUIData({});
+        check(rows.len() == 6 && rows[2].text == "You: 1/1 hits vs 0.50 expected", "tooltip reads live state");
         X.reset();
     });
 
@@ -147,16 +148,19 @@ try
         hooks["scripts/ui/screens/tactical/tactical_combat_result_screen"](q);
         foreach (outcome in ["win", "loose", "retreat"])
         {
-            local native = {combatInformation = {result = outcome}, statistics = [1, 2, 3], stash = [], foundLoot = []};
+            local native = {combatInformation = outcome == "retreat" ? {result = outcome} : {result = outcome, title = "Native title", subTitle = "Native detail"},
+                statistics = [1, 2, 3], stash = [], foundLoot = []};
             local screen = {data = native};
             screen.queryData <- q.queryData(function() { calls++; return this.data; }).bindenv(screen);
             local result = screen.queryData();
             check(result == native && result.combatInformation.result == outcome && result.statistics.len() == 3, "native result preserved");
             check(result.xbroLuck.ours_percent == "+43%", "luck added for " + outcome);
+            if (outcome == "retreat") check(::Errors.top().find("native_outcome") != null && result.xbroLuck.ours_percent == "+43%", "a missing native slot cannot drop the payload");
+            else check(fields(::Logs.top()).native_result == outcome, "native outcome journaled");
         }
         check(calls == 3, "native query called once per outcome");
         local resultState = X.resultState;
-        X.resultState = function() { throw "missing results"; };
+        X.resultState = function( _combatInformation = null ) { throw "missing results"; };
         local native = {statistics = []};
         check(q.queryData(function() { return native; })() == native, "mod failure preserves native payload");
         X.resultState = resultState;

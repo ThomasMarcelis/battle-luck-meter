@@ -58,29 +58,24 @@ test('create binds a tooltip and stays hidden until a push', () => {
 
 const initial = {enabled: true, marker: 50, emphasis: 0.5, ours_percent: '—', theirs_percent: '—', ours_tone: 'neutral', theirs_tone: 'neutral'};
 
-test('renders immediate percentages, colour changes and marker values exactly as pushed', () => {
+test('renders only the luck marker and ignores volatile percentage payloads', () => {
     const s = session(), view = s.module.xbroView;
     s.module.xbroUpdate(initial);
-    assert.equal(view.oursPercent.text(), '—');
+    assert.equal(view.readouts, undefined);
+    assert.equal(view.oursPercent, undefined);
+    assert.equal(view.theirsPercent, undefined);
+    assert.equal(view.root.children.length, 1, 'only the track is visible');
     assert.equal(view.marker.style.left, '50%');
     s.module.xbroUpdate({...initial, marker: 45.5, emphasis: 0.55, ours_percent: '-100%', ours_tone: 'bad'});
     assert.equal(view.marker.style.left, '45.5%');
     assert.equal(view.track.style.opacity, 0.55);
-    assert.equal(view.oursPercent.text(), '-100%');
-    assert.ok(view.oursPercent.hasClass('xbro-bad'));
     assert.equal(view.root.style.display, '');
     s.module.xbroUpdate({...initial, marker: 100, emphasis: 1, ours_percent: '+1900%', ours_tone: 'good', theirs_percent: '+10%', theirs_tone: 'bad'});
     assert.equal(view.marker.style.left, '100%');
     assert.equal(view.track.style.opacity, 1);
-    assert.equal(view.oursPercent.text(), '+1900%');
-    assert.ok(view.oursPercent.hasClass('xbro-good'));
-    assert.ok(!view.oursPercent.hasClass('xbro-bad'));
-    assert.ok(view.theirsPercent.hasClass('xbro-bad'));
     s.module.xbroUpdate({...initial, enabled: false, marker: 0, ours_percent: '0%'});
     assert.equal(view.marker.style.left, '0%');
     assert.equal(view.root.style.display, 'none');
-    assert.equal(view.oursPercent.text(), '0%');
-    assert.ok(!view.oursPercent.hasClass('xbro-good') && !view.oursPercent.hasClass('xbro-bad'));
     s.module.xbroUpdate(null);
     assert.equal(view.marker.style.left, '0%', 'null push is ignored');
     assert.deepEqual(s.errors, []);
@@ -110,10 +105,10 @@ test('reports actual rendered fields and destroy, rejects stale or late updates'
     s.module.xbroUpdate({...initial, battle: 2, push: 10, marker: 55, emphasis: 0.6, ours_percent: '+100%', ours_tone: 'good'});
     const receipt = s.receipts.at(-1);
     assert.deepEqual(receipt, {schema: 3, ui_seq: 1, battle: 2, event: NaN, origin_battle: 2, push: 10, view: 1, status: 'rendered', surface: 'battle',
-        ours_percent: '+100%', theirs_percent: '—', ours_tone: 'good', theirs_tone: 'neutral', emphasis: 0.6, left: '55%', display: ''});
+        emphasis: 0.6, left: '55%', display: ''});
     s.module.xbroUpdate({...initial, battle: 1, push: 9, enabled: false});
     assert.equal(s.receipts.at(-1).status, 'stale');
-    assert.equal(s.module.xbroView.oursPercent.text(), '+100%');
+    assert.equal(s.module.xbroView.marker.style.left, '55%');
     s.module.mSQHandle = null; // The native screen disconnects first.
     s.module.destroyDIV();
     assert.equal(s.receipts.at(-1).status, 'destroyed');

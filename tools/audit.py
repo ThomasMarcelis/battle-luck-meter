@@ -153,7 +153,7 @@ READOUT_FIELDS = ('marker', 'emphasis', 'ours_percent', 'ours_tone', 'theirs_per
 REQUIRED_V3.update(
     state='attempts results excluded errors attack ours_n ours_hits ours_expected ours_variance theirs_n theirs_hits theirs_expected theirs_variance rarity weight swing enabled text ' + ' '.join(READOUT_FIELDS),
     push='push attack status surface enabled ' + ' '.join(READOUT_FIELDS),
-    tooltip='attack ours theirs verdict swing sample interpretation')
+    tooltip='attack ours theirs verdict swing sample')
 REQUIRED_V3['end'] = REQUIRED_V3['state']
 
 
@@ -294,19 +294,30 @@ def float32(value):
     return struct.unpack('f', struct.pack('f', value))[0]
 
 
-def presentation_v3(s):
+# A start line without marker_model is a 0.4.0/0.4.1 journal: linear warm-up that reached
+# the raw tail at attack 10, results retaining that damping, and the old verdict/sample wording.
+MARKER_MODELS = {None: True, 'evidence_weight_v1': False}
+UI_MODELS = {None: True, 'bar_only_v1': False}
+LEGACY_INTERPRETATION = ("Compared with battles with the same hit chances; equally lucky or unlucky outcomes count too. "
+                         "Rarity uses the full calculation, before the bar's early damping.")
+
+
+def presentation_v3(s, legacy=False):
     n, rarity = int(s['attack']), float(s['rarity'])
-    weight = min(n / 10, 1.0)
+    weight = min(n / 10, 1.0) if legacy else n / (n + 10)
     text = 'Even'
     if rarity != 50:
         group = max(1, math.ceil(min(rarity, 100-rarity)-0.0001))
-        text = f'Bottom {group}% unluckiest battles' if rarity < 50 else f'Top {group}% luckiest battles'
-    out = dict(weight=weight, marker=50+(rarity-50)*weight, emphasis=0.5+0.5*weight, text=text)
+        side = 'Bottom' if rarity < 50 else 'Top'
+        text = (f'{side} {group}% {"unluckiest" if rarity < 50 else "luckiest"} battles' if legacy
+                else f'{side} {group}% of outcomes at these odds')
+    out = dict(weight=weight, marker=50+(rarity-50)*weight, emphasis=0.5+0.5*min(n / 10, 1.0), text=text)
     for side in SIDES:
         expected = float(s[side+'_expected'])
         change = None
         if expected > 0:
-            # Each runtime arithmetic operation rounds to a Squirrel float.
+            # Each runtime arithmetic operation rounds to a Squirrel float. The magnitude
+            # keeps its fraction: journals whose engine Math.abs truncated it fail here.
             relative = float32(100*float32(float32(int(s[side+'_hits'])/float32(expected))-1))
             change = math.floor(float32(abs(relative)+0.5)) * (-1 if relative < 0 else 1)
         out[side+'_percent'] = '—' if change is None else '0%' if change == 0 else f'{change:+d}%'
@@ -314,7 +325,7 @@ def presentation_v3(s):
     return out
 
 
-def calculated_v3(attacks, mass):
+def calculated_v3(attacks, mass, legacy=False):
     out = {'attack': len(attacks)}
     for side in SIDES:
         sample = [a for a in attacks if a['side'] == side]
@@ -333,7 +344,7 @@ def calculated_v3(attacks, mass):
     lower, upper = math.fsum(mass[:observed+1])/total, math.fsum(mass[observed:])/total
     out['rarity'] = 100*lower if lower < 0.5-1e-7 else 100*(1-upper) if upper < 0.5-1e-7 else 50.0
     out['swing'] = float32(float32(out['ours_hits']-out['ours_expected'])-float32(out['theirs_hits']-out['theirs_expected']))
-    out.update(presentation_v3(out))
+    out.update(presentation_v3(out, legacy))
     return out
 
 
@@ -353,29 +364,59 @@ def verify_side_text_v3(e, s, compact=False):
             raise ValueError('displayed hit comparison differs')
 
 
-def sample_text(n):
-    return ('No attacks recorded.' if n == 0 else
-            f'Small sample: {n} {"attack" if n == 1 else "attacks"}. Below 10 attacks, the bar stays closer to the centre.' if n < 10 else
-            f'Counted attacks: {n}.')
+def verify_tooltip_side_text_v3(e, s, legacy=False):
+    """The concise tooltip since 0.4.1; 0.4.0 journals carry the explained form."""
+    if legacy:
+        try:
+            verify_side_text_v3(e, s)
+            return
+        except ValueError:
+            pass
+    for side, label in [('ours', 'You'), ('theirs', 'Enemy')]:
+        match = re.fullmatch(
+            rf'{label}: {s[side+"_hits"]}/{s[side+"_n"]} hits vs (\d+\.\d{{2}}) expected', e[side])
+        if match is None or abs(float(match[1])-float(s[side+'_expected'])) > 0.00502:
+            raise ValueError('displayed tooltip side counts or expected hits differ')
 
 
-def verify_swing_text(text, swing):
-    if text == 'Net hit swing: even.':
+def sample_text(n, legacy=False):
+    """Results overview sample line; legacy journals explained the damping they retained."""
+    if n == 0:
+        return 'No attacks recorded.'
+    if n < 10:
+        return f'Small sample: {n} {"attack" if n == 1 else "attacks"}.' + (
+            ' Below 10 attacks, the bar stays closer to the centre.' if legacy else '')
+    return f'Counted attacks: {n}.'
+
+
+def tooltip_samples(n, legacy=False):
+    concise = ('No attacks recorded.' if n == 0 else
+               f'Small sample: {n} {"attack" if n == 1 else "attacks"} counted.' if n < 10 else f'{n} attacks counted.')
+    return (concise, sample_text(n, True)) if legacy else (concise,)
+
+
+def verify_swing_text(text, swing, label='Net hit swing'):
+    if text == f'{label}: even.':
         if abs(swing) > 0.00502:
             raise ValueError('displayed net hit swing is not even')
         return
-    match = re.fullmatch(r'Net hit swing: (\d+\.\d{2}) hits (in your favour|against you)\.', text)
+    match = re.fullmatch(rf'{label}: (\d+\.\d{{2}}) hits (in your favour|against you)\.', text)
     if (match is None or float(match[1]) == 0 or abs(float(match[1])-abs(swing)) > 0.00502
             or (match[2] == 'in your favour') != (swing > 0)):
         raise ValueError('displayed net hit swing differs')
 
 
-def verify_tooltip_v3(e, s):
+def verify_tooltip_v3(e, s, legacy=False):
     n = int(s['attack'])
-    verify_fields(e, {'attack': n, 'verdict': s['text'] if n else 'No attacks recorded', 'sample': sample_text(n),
-                     'interpretation': "Compared with battles with the same hit chances; equally lucky or unlucky outcomes count too. Rarity uses the full calculation, before the bar's early damping."})
-    verify_swing_text(e['swing'], float(s['swing']))
-    verify_side_text_v3(e, s)
+    verify_fields(e, {'attack': n, 'verdict': s['text'] if n else 'No attacks recorded'})
+    # Legacy journals logged an unrendered interpretation sentence; the current tooltip has none.
+    if legacy != ('interpretation' in e) or e.get('interpretation', LEGACY_INTERPRETATION) != LEGACY_INTERPRETATION:
+        raise ValueError('tooltip interpretation disagrees with the journal model')
+    # 0.4.0 labelled the swing like the overview; 0.4.1 introduced the concise label.
+    verify_swing_text(e['swing'], float(s['swing']), 'Net hit swing' if legacy and e['swing'].startswith('Net hit swing:') else 'Net')
+    if e['sample'] not in tooltip_samples(n, legacy):
+        raise ValueError('displayed tooltip sample differs')
+    verify_tooltip_side_text_v3(e, s, legacy)
 
 
 def verify_fields(e, expected):
@@ -425,7 +466,8 @@ def audit_journal(text, show_attacks=False):
             if bid < 0:
                 raise ValueError('negative battle ID')
             b = battles.setdefault(bid, {'start': None, 'end': None, 'closed': False, 'attempts': {}, 'results': set(), 'attacks': [],
-                                       'mass': [1.0], 'excluded': 0, 'enabled': None, 'minimum': None, 'states': 0, 'needs_state': False, 'needs_push': False, 'presentation': None})
+                                       'mass': [1.0], 'excluded': 0, 'enabled': None, 'minimum': None, 'states': 0, 'needs_state': False, 'needs_push': False,
+                                       'presentation': None, 'legacy': False, 'percent_badges': True})
             event = e['event']
             if e['channel'] == 'xBro' and b['needs_push'] and event != 'push':
                 errors.append(f'battle {bid}: missing push after state')
@@ -438,6 +480,12 @@ def audit_journal(text, show_attacks=False):
                     raise ValueError('duplicate/late battle start')
                 if e['model'] != 'displayed_chance_v1':
                     raise ValueError('unsupported probability model')
+                if e.get('marker_model') not in MARKER_MODELS:
+                    raise ValueError('unsupported marker model')
+                if e.get('ui_model') not in UI_MODELS:
+                    raise ValueError('unsupported UI model')
+                b['legacy'] = MARKER_MODELS[e.get('marker_model')]
+                b['percent_badges'] = UI_MODELS[e.get('ui_model')]
                 b['start'] = e
             if event in ('start', 'settings'):
                 b['enabled'], b['minimum'] = e['enabled'], 10 if v3 else number(e, 'min_attacks', True)
@@ -499,11 +547,10 @@ def audit_journal(text, show_attacks=False):
                 if bid != 0:
                     verify_fields(e, {'enabled': b['enabled']} if v3 else {'enabled': b['enabled'], 'min_attacks': b['minimum']})
                 if v3:
-                    expected = calculated_v3(b['attacks'], b['mass'])
-                    # Verify raw arithmetic independently, then format from validated
-                    # float32 values so genuine rounding ties retain their runtime side.
-                    verify_fields(e, {k: v for k, v in expected.items() if k not in (*READOUT_FIELDS, 'weight', 'text')})
-                    displayed = presentation_v3(e)
+                    expected = calculated_v3(b['attacks'], b['mass'], b['legacy'])
+                    # Raw arithmetic is verified independently below; readouts are formatted
+                    # from the runtime's own float32 values so rounding ties keep their side.
+                    displayed = presentation_v3(e, b['legacy'])
                     expected.update(displayed)
                 else:
                     expected = calculated(b['attacks'], minimum)
@@ -520,7 +567,8 @@ def audit_journal(text, show_attacks=False):
                             displayed['text'] = ('Lucky ' if number(e, 'z')>0 else 'Unlucky ')+str(written_rank)+'%'
                     expected.update(displayed)
                 expected.update(attempts=len(b['attempts']), results=len(b['results']), excluded=b['excluded'], errors=0)
-                verify_fields(e, expected)
+                # Record the checkpoint before judging it, so one defective checkpoint is
+                # one finding and later pushes are compared with the runtime's own values.
                 b['presentation'] = displayed
                 b['states'] += 1
                 b['needs_state'] = False
@@ -528,8 +576,9 @@ def audit_journal(text, show_attacks=False):
                     b['needs_push'] = True
                 if event == 'end':
                     b['end'] = e
-                    if len(b['attempts']) != len(b['results']):
-                        raise ValueError('battle ended with unsettled attempts')
+                verify_fields(e, expected)
+                if event == 'end' and len(b['attempts']) != len(b['results']):
+                    raise ValueError('battle ended with unsettled attempts')
             elif event == 'push':
                 b['needs_push'] = False
                 pid = number(e, 'push', True)
@@ -541,16 +590,19 @@ def audit_journal(text, show_attacks=False):
                 if e['status'] not in ('requested', 'unavailable'):
                     raise ValueError('unknown delivery status')
                 if bid != 0 and b['minimum'] is not None:
-                    want = calculated_v3(b['attacks'], b['mass']) if v3 else calculated(b['attacks'], b['minimum'])
+                    want = calculated_v3(b['attacks'], b['mass'], b['legacy']) if v3 else calculated(b['attacks'], b['minimum'])
                     if b['presentation'] is not None:
                         want.update(b['presentation'])
                     if e['surface'] == 'results':
                         if not b['end']:
                             raise ValueError('results payload before battle end')
                         if v3:
+                            if not b['legacy']:
+                                # The overview shows the raw tail at full emphasis.
+                                want.update(marker=float(b['end']['rarity']), emphasis=1.0)
                             verify_side_text_v3(e, want, compact=True)
                             verify_fields(e, {'text': want['text'] if b['attacks'] else 'No attacks recorded',
-                                              'sample': sample_text(len(b['attacks'])) if b['attacks'] else ''})
+                                              'sample': sample_text(len(b['attacks']), b['legacy']) if b['attacks'] else ''})
                             if b['attacks']:
                                 verify_swing_text(e['swing'], float(want['swing']))
                             else:
@@ -579,7 +631,11 @@ def audit_journal(text, show_attacks=False):
                             verify_fields(e, {k: push[k] for k in ('text', 'sample', 'swing')})
                     verify_fields(e, {'display': '' if push['enabled']=='1' else 'none'})
                     if v3:
-                        verify_fields(e, {k: push[k] for k in READOUT_FIELDS if k not in ('marker', 'emphasis')})
+                        readouts = tuple(k for k in READOUT_FIELDS if k not in ('marker', 'emphasis'))
+                        if b['percent_badges']:
+                            verify_fields(e, {k: push[k] for k in readouts})
+                        elif any(k in e for k in readouts):
+                            raise ValueError('bar-only UI receipt contains a percentage readout')
                         verify_fields(e, {'emphasis': float(push['emphasis'])})
                     else:
                         verify_fields(e, {'text': push['text'], 'pending': push['pending']})
@@ -610,10 +666,10 @@ def audit_journal(text, show_attacks=False):
                 if b['minimum'] is None:
                     continue
                 if v3:
-                    s = calculated_v3(b['attacks'], b['mass'])
+                    s = calculated_v3(b['attacks'], b['mass'], b['legacy'])
                     if b['presentation'] is not None:
                         s.update(b['presentation'])
-                    verify_tooltip_v3(e, s)
+                    verify_tooltip_v3(e, s, b['legacy'])
                 else:
                     s = calculated(b['attacks'], b['minimum'])
                     if b['presentation'] is not None:
@@ -663,8 +719,8 @@ def audit_journal(text, show_attacks=False):
         if b['minimum'] is not None:
             print(f'battle {bid}: {len(b["attempts"])} attempts, {len(b["results"])} results, {b["excluded"]} excluded, {b["states"]} checkpoints')
             if b['start'] and b['start']['schema'] == '3':
-                s = calculated_v3(b['attacks'], b['mass'])
-                print(f'  You {s["ours_percent"]} | Enemy {s["theirs_percent"]} | {s["text"]} | marker {s["marker"]:.2f}')
+                s = calculated_v3(b['attacks'], b['mass'], b['legacy'])
+                print(f'  You {s["ours_percent"]} | Enemy {s["theirs_percent"]} | {s["text"]} | rarity {s["rarity"]:.2f} | live marker {s["marker"]:.2f}')
             else:
                 print('  '+describe(b['end'] if b['end'] else summary(b['attacks'], b['minimum'])))
     if not any(bid > 0 for bid in battles):
@@ -674,7 +730,7 @@ def audit_journal(text, show_attacks=False):
             print(f'{label}: {finding}')
     print(f'journal: {len(entries)} events, {len(errors)} errors, {len(models)} model discrepancies, {len(incomplete)} evidence gaps')
     print('LIMIT: reference pricing assumes ordinary clamped engine thresholds; native dice/hidden modifiers and attacks bypassing this hook are unobserved.')
-    print('LIMIT: rarity compares recorded odds (schema 2 uses a normal approximation); UI receipts confirm DOM assignment, not visible fit or a full install/removal lifecycle.')
+    print('LIMIT: rarity is an inclusive tail of outcomes at the recorded odds, not a rank among battles (schema 2 uses a normal approximation); UI receipts confirm DOM assignment, not visible fit or a full install/removal lifecycle.')
     if not entries:
         return 1
     return 1 if errors or models else 2 if incomplete else 0

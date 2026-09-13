@@ -10,21 +10,10 @@
         var track = $('<div class="xbro-track"/>').appendTo(root);
         $('<div class="xbro-centre"/>').appendTo(track);
         var marker = $('<div class="xbro-marker"/>').appendTo(track);
-        var readouts = $('<div class="xbro-readouts title-font-small font-bold font-bottom-shadow font-color-title"/>').appendTo(root);
-        var you = $('<div class="xbro-readout"/>').appendTo(readouts);
-        $('<span class="xbro-side-name"/>').text('You ').appendTo(you);
-        var ours = $('<span class="xbro-percent"/>').appendTo(you);
-        var enemy = $('<div class="xbro-readout"/>').appendTo(readouts);
-        $('<span class="xbro-side-name"/>').text('Enemy ').appendTo(enemy);
-        var theirs = $('<span class="xbro-percent"/>').appendTo(enemy);
         root.appendTo(container);
         try { root.bindTooltip({contentType: 'msu-generic', modId: 'mod_xbro', elementId: 'Luck'}); }
         catch (error) { root.remove(); throw error; }
-        return {root: root, track: track, marker: marker, readouts: readouts, oursPercent: ours, theirsPercent: theirs, id: ++views, last: null};
-    }
-
-    function renderPercent(element, percent, tone) {
-        element.text(percent).toggleClass('xbro-good', tone === 'good').toggleClass('xbro-bad', tone === 'bad');
+        return {root: root, track: track, marker: marker, id: ++views, last: null};
     }
 
     function render(view, data) {
@@ -32,8 +21,6 @@
         view.root.css('display', data.enabled ? '' : 'none');
         view.marker.css('left', data.marker + '%');
         view.track.css('opacity', data.emphasis);
-        renderPercent(view.oursPercent, data.ours_percent, data.ours_tone);
-        renderPercent(view.theirsPercent, data.theirs_percent, data.theirs_tone);
     }
 
     var uiSequence = 0;
@@ -58,10 +45,6 @@
         var view = module.xbroView;
         var info = {origin_battle: data.battle, push: data.push, view: view ? view.id : 0, status: status, surface: data.surface};
         if (view && status === 'rendered') {
-            info.ours_percent = view.oursPercent.text();
-            info.theirs_percent = view.theirsPercent.text();
-            info.ours_tone = view.oursPercent.hasClass('xbro-good') ? 'good' : view.oursPercent.hasClass('xbro-bad') ? 'bad' : 'neutral';
-            info.theirs_tone = view.theirsPercent.hasClass('xbro-good') ? 'good' : view.theirsPercent.hasClass('xbro-bad') ? 'bad' : 'neutral';
             info.emphasis = view.track.get(0).style.opacity;
             info.left = view.marker.get(0).style.left;
             info.display = view.root.get(0).style.display;
@@ -157,7 +140,6 @@
         var view = build(panel.mStatisticsContainer);
         panel.xbroView = view;
         view.root.addClass('xbro-result-luck');
-        view.readouts.removeClass('title-font-small').addClass('title-font-normal');
         view.verdict = $('<div class="xbro-result-verdict text-font-normal font-bold font-color-title"/>')
             .text(data.text).prependTo(view.root);
         $('<div class="xbro-result-title title-font-normal font-bold font-bottom-shadow font-color-subtitle"/>')

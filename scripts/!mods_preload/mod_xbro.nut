@@ -12,7 +12,7 @@
     ::XBro.Hooks.hook("scripts/ui/screens/tactical/tactical_combat_result_screen", function(q) {
         q.queryData = @(__original) function() {
             local data = __original();
-            try { data.xbroLuck <- ::XBro.resultState(); }
+            try { data.xbroLuck <- ::XBro.resultState("combatInformation" in data ? data.combatInformation : null); }
             catch (error) { ::XBro.fail("results", error); }
             return data;
         };

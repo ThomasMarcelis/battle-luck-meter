@@ -21,7 +21,7 @@
     if (_side.sumP > 0.0)
     {
         local relative = 100.0 * (_side.hits / _side.sumP - 1.0);
-        change = ::Math.floor(::Math.abs(relative) + 0.5).tointeger();
+        change = ::Math.floor(this.abs(relative) + 0.5).tointeger();
         if (relative < 0.0) change = -change;
         percent = (change > 0 ? "+" : "") + change + "%";
         if (change != 0) tone = (change > 0) == _ours ? "good" : "bad";
@@ -48,16 +48,19 @@
     // Single-precision summation can place an exact half just below the median.
     if (lower < 0.5 - 0.0000001) rarity = 100.0 * lower;
     else if (upper < 0.5 - 0.0000001) rarity = 100.0 * (1.0 - upper);
-    local weight = ::Math.minf(n / 10.0, 1.0);
+    // The live bar weights the exact tail by evidence, n / (n + 10): half way at
+    // attack 10, always on the tail's side of neutral, so one discrete jump in a
+    // young distribution moves it less. Emphasis warms up separately, full at 10.
+    local weight = n / (n + 10.0);
     local text = "Even";
     if (rarity != 50.0)
     {
         // Round group sizes up, allowing only float noise at integer boundaries.
         local tail = rarity < 50.0 ? lower : upper;
         local group = ::Math.max(1, ::Math.ceil(100.0 * tail - 0.0001).tointeger());
-        text = (rarity < 50.0 ? "Bottom " : "Top ") + group + (rarity < 50.0 ? "% unluckiest battles" : "% luckiest battles");
+        text = (rarity < 50.0 ? "Bottom " : "Top ") + group + "% of outcomes at these odds";
     }
     return {n = n, rarity = rarity, weight = weight, marker = 50.0 + (rarity - 50.0) * weight,
-        emphasis = 0.5 + 0.5 * weight, text = text,
+        emphasis = 0.5 + 0.5 * ::Math.minf(n / 10.0, 1.0), text = text,
         swing = (ours.hits - ours.expected) - (theirs.hits - theirs.expected), ours = ours, theirs = theirs};
 };

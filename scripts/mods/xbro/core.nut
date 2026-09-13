@@ -1,9 +1,13 @@
 ::XBro <- {
-    ID = "mod_xbro", Name = "xBro", Version = "0.4.0",
+    ID = "mod_xbro", Name = "xBro", Version = "0.4.3",
     Battles = 0, Battle = null, Sequence = 0, Pushes = 0
 };
 
 ::XBro.newSide <- @() {n = 0, hits = 0, sumP = 0.0, sumPQ = 0.0};
+
+// The engine binds Math.abs, Math.min and Math.max to integer functions (see the
+// start-line probes), so any float magnitude must be taken here instead.
+::XBro.abs <- @( _value ) _value < 0 ? -_value : _value;
 
 // Strings remain readable and single-line in log.html. Percent escapes are decoded
 // exactly once by the auditor, after fields have been parsed (including UTF-8 bytes).
@@ -64,5 +68,8 @@
     this.Battles++;
     this.reset();
     this.log("start", {version = this.Version, model = "displayed_chance_v1",
-        stats_model = "favorable_poisson_binomial_v1", ui_transport = "msu_connection_v1", enabled = this.enabled()});
+        stats_model = "favorable_poisson_binomial_v1", marker_model = "evidence_weight_v1", ui_model = "bar_only_v1",
+        ui_transport = "msu_connection_v1", enabled = this.enabled(),
+        // Constant-only probes distinguish engine math bindings from local test doubles.
+        probe_abs = ::Math.abs(-1.75), probe_min = ::Math.min(95, 74.5), probe_max = ::Math.max(5, 74.5)});
 };
