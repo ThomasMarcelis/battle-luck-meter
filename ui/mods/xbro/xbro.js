@@ -1,4 +1,4 @@
-// Squirrel owns every readout; JS presents the live meter and final battle summary.
+// Squirrel owns every value; JS presents the bar and exact final battle summary.
 // ES3 for the game's Chromium 48.
 (function () {
     'use strict';
