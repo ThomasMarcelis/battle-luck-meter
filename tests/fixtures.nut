@@ -29,10 +29,10 @@ function fields( _line )
     return out;
 }
 
-// Settings double: XBro reads Enabled through Mod.ModSettings at use time.
+// Settings double: XBro reads both presentation settings at use time.
 function settings( _values = null )
 {
-    local values = {Enabled = true};
+    local values = {Enabled = true, ShowPercentages = false};
     if (_values != null) foreach (key, value in _values) values[key] = value;
     ::XBro.Mod <- {ModSettings = {getSetting = function( _id ) { local v = values[_id]; return {getValue = @() v}; }}};
     return values;

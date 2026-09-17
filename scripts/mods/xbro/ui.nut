@@ -2,10 +2,12 @@
 {
     local page = this.Mod.ModSettings.addPage("General");
     local refresh = function( _old ) {
-        try { ::XBro.log("settings", {enabled = ::XBro.enabled()}); ::XBro.checkpoint("state"); ::XBro.push(); }
+        try { ::XBro.log("settings", {enabled = ::XBro.enabled(), show_percentages = ::XBro.showPercentages()}); ::XBro.checkpoint("state"); ::XBro.push(); }
         catch (error) { ::XBro.fail("settings", error); }
     };
     page.addBooleanSetting("Enabled", true, "Show luck meter", "Show luck during battle and after the brother cards on the results screen.").addAfterChangeCallback(refresh);
+    page.addBooleanSetting("ShowPercentages", false, "Show relative hit percentages",
+        "Show raw relative hit percentages for you and the enemy. These raw percentages can swing sharply in small samples.").addAfterChangeCallback(refresh);
 };
 
 ::XBro.registerTooltips <- function()
@@ -14,6 +16,7 @@
 };
 
 ::XBro.enabled <- @() this.Mod.ModSettings.getSetting("Enabled").getValue();
+::XBro.showPercentages <- @() this.Mod.ModSettings.getSetting("ShowPercentages").getValue();
 
 // MSU's connection outlives tactical screens. Keep the browser's sequence and
 // originating battle intact, including receipts arriving after a battle reset.
@@ -32,7 +35,7 @@
 ::XBro.state <- function()
 {
     local s = this.summary();
-    return {enabled = this.enabled(), marker = s.marker, emphasis = s.emphasis,
+    return {enabled = this.enabled(), show_percentages = this.showPercentages(), marker = s.marker, emphasis = s.emphasis,
         ours_percent = s.ours.percent, ours_tone = s.ours.tone, theirs_percent = s.theirs.percent, theirs_tone = s.theirs.tone};
 };
 

@@ -4,7 +4,8 @@ A luck meter for Battle Brothers. During a battle a small bar sits under the rou
 the dice have been running for you, against you, or evenly so far.
 
 The bar runs from red on the left (unlucky), through neutral in the centre, to green on the right (lucky).
-It has no changing percentage badges. The bar begins moving after the first counted attack, including a miss,
+Relative hit-percentage badges are optional and off by default. When enabled, they show each side's raw hits
+relative to expected hits; these raw figures can swing sharply in small samples. The bar begins moving after the first counted attack, including a miss,
 and is weighted by the evidence behind it: half way to the raw figure at attack 10, three quarters at attack 30,
 always on the same side of the centre, so it moves less per attack while attacks are few. It fades in separately,
 fully visible from attack 10. Hover for actual/expected hits, net hit swing and the raw rarity, such as **Bottom 5% of outcomes at these
@@ -12,16 +13,17 @@ odds** or **Top 5% of outcomes at these odds**. Rarity compares outcomes at the 
 ties; common outcomes read `Even`.
 
 After victory, defeat or retreat, the Statistics tab shows **Battle luck** after the last brother, with the
-rarity verdict and aligned hits-versus-expected totals for each side, without percentage badges. Its bar shows the
+rarity verdict and aligned hits-versus-expected totals for each side. The same optional percentage badges appear
+there when enabled. Its bar shows the
 raw rarity at full emphasis, without the live bar's evidence weighting. The overview also shows net hit swing
 and attack count. With a full party, scroll down through the cards to reach it. An empty battle says
-`No attacks recorded` and shows `—` for both sides.
+`No attacks recorded`; enabled percentage badges show `—` for both sides.
 
 ## Install
 
 Requires [Modern Hooks](https://www.nexusmods.com/battlebrothers/mods/685) 0.6.0+ and
 [MSU](https://www.nexusmods.com/battlebrothers/mods/479) 1.9.0+. Drop `mod_xbro-<version>.zip` into the game's
-`data` folder. The visibility setting is in the MSU settings menu under xBro.
+`data` folder. The global visibility and relative-percentage settings are in the MSU settings menu under xBro.
 
 ## What it measures
 
@@ -42,7 +44,8 @@ Every call through the hooked attack routine is journaled to `Documents/Battle B
 excluded and disabled calls. Each attempt has an ID, round, actor/skill IDs and names, its exclusion reason or
 all inputs used to price it, including whether the actors are allied. A separate result records the native return; nested attacks retain their own IDs.
 Every counted result has a checkpoint with hits, expectations, variances, rarity, evidence weight, marker position and diagnostic hit deltas.
-Settings changes, battle boundaries, errors, tooltip requests, battle/results UI pushes, rendered DOM values and teardown
+Settings changes, battle boundaries, errors, tooltip requests, battle/results UI pushes, rendered DOM values, whether
+percentage badges were hidden or rendered, and teardown
 receipts are recorded too. Logging never reads or consumes dice.
 
 Copy `log.html` before restarting the game: the engine overwrites it. Keep the **whole file**, including native
@@ -63,7 +66,8 @@ Schema 3 entries begin `[xBro] schema=3 seq=... battle=... event=...`. Strings a
 entities within the session; names are decoration. Squirrel and `[xBroUI]` browser receipts have separate
 session sequences. Since 0.3.1, receipts go through MSU's session connection to Squirrel's logger,
 preserving their originating battle and push IDs after tactical UI disconnection. Battle starts identify
-the version, the probability, statistics, marker and UI models, and the receipt transport. Earlier console-based receipts
+the version, the probability, statistics, marker and UI models, percentage setting, and receipt transport. The auditor
+also accepts percentage-visible 0.4.1/0.4.2 receipts and 0.4.3 `bar_only_v1` receipts. Earlier console-based receipts
 were absent from a live log; the new transport still needs live confirmation.
 
 ## What it deliberately does not measure

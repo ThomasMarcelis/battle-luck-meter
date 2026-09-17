@@ -27,13 +27,26 @@ function receipt( data )
     }
     X.uiReceipt(line);
 }
+function renderedReceipt( _data, _receipt )
+{
+    local shown = _data.enabled && _data.show_percentages;
+    _receipt.badges <- shown ? "rendered" : "hidden";
+    if (shown)
+    {
+        _receipt.ours_percent <- _data.ours_percent;
+        _receipt.theirs_percent <- _data.theirs_percent;
+        _receipt.ours_tone <- _data.ours_tone;
+        _receipt.theirs_tone <- _data.theirs_tone;
+    }
+    receipt(_receipt);
+}
 world(); local values = settings();
 // A synchronous presentation double exercises the same receipt format as JS.
 ::Tactical.TopbarRoundInformation = {
     last = null, isNull = @() false,
     xbroPush = function( data ) {
         this.last = data;
-        receipt({origin_battle = data.battle, push = data.push, view = data.battle, surface = "battle", status = "rendered",
+        renderedReceipt(data, {origin_battle = data.battle, push = data.push, view = data.battle, surface = "battle", status = "rendered",
             display = data.enabled ? "" : "none", emphasis = data.emphasis, left = data.marker + "%"});
     }
 };
@@ -42,7 +55,7 @@ function closeBattle()
     local result = X.resultState();
     if (result.enabled)
     {
-        receipt({origin_battle = result.battle, push = result.push, view = 1000 + result.battle, surface = "results", status = "rendered",
+        renderedReceipt(result, {origin_battle = result.battle, push = result.push, view = 1000 + result.battle, surface = "results", status = "rendered",
             display = "", emphasis = result.emphasis, left = result.marker + "%",
             text = result.text, ours = result.ours, theirs = result.theirs, swing = result.swing, sample = result.sample});
         receipt({origin_battle = result.battle, push = result.push, view = 1000 + result.battle, surface = "results", status = "destroyed"});
@@ -59,7 +72,7 @@ X.tooltip(); X.finish();
 local result = X.resultState();
 for (local v = 100; v < 102; v++)
 {
-    receipt({origin_battle = result.battle, push = result.push, view = v, surface = "results", status = "rendered",
+    renderedReceipt(result, {origin_battle = result.battle, push = result.push, view = v, surface = "results", status = "rendered",
         display = "", emphasis = result.emphasis, left = result.marker + "%",
         text = result.text, ours = result.ours, theirs = result.theirs, swing = result.swing, sample = result.sample});
     receipt({origin_battle = result.battle, push = result.push, view = v, surface = "results", status = "destroyed"});
@@ -74,12 +87,19 @@ X.settle(X.price(skill(40), actor(2), a, true), false);
 X.settle(outer, true);
 X.settle(X.price(skill(60), actor(1), null, true), false);
 values.Enabled = false;
-X.log("settings", {enabled = X.enabled()}); X.checkpoint("state"); X.push();
+X.log("settings", {enabled = X.enabled(), show_percentages = X.showPercentages()}); X.checkpoint("state"); X.push();
 X.settle(X.price(skill(70), actor(1), actor(2), true), false);
 values.Enabled = true;
-X.log("settings", {enabled = X.enabled()}); X.checkpoint("state"); X.push();
+X.log("settings", {enabled = X.enabled(), show_percentages = X.showPercentages()}); X.checkpoint("state"); X.push();
+values.ShowPercentages = true;
+X.log("settings", {enabled = X.enabled(), show_percentages = X.showPercentages()}); X.checkpoint("state"); X.push();
 play([75, 65, 80, 70], [1, 1, 0, 1], true);
+values.ShowPercentages = false;
+X.log("settings", {enabled = X.enabled(), show_percentages = X.showPercentages()}); X.checkpoint("state"); X.push();
+values.ShowPercentages = true;
+X.log("settings", {enabled = X.enabled(), show_percentages = X.showPercentages()}); X.checkpoint("state"); X.push();
 X.tooltip(); X.finish(); closeBattle();
+values.ShowPercentages = false;
 // Mixed outcomes and accumulating fractional expectations.
 X.begin();
 play([60, 60, 60, 60, 60, 60], [1, 1, 1, 0, 0, 0], true);
@@ -102,5 +122,5 @@ X.begin(); play([61], [1], true); X.tooltip(); X.finish(); closeBattle();
 // Settings outside a closed battle must not require an unavailable topbar receipt.
 ::Tactical.TopbarRoundInformation = null;
 values.Enabled = false;
-X.log("settings", {enabled = X.enabled()}); X.checkpoint("state"); X.push();
+X.log("settings", {enabled = X.enabled(), show_percentages = X.showPercentages()}); X.checkpoint("state"); X.push();
 foreach (line in ::Logs) row("info", line);

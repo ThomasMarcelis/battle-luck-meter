@@ -15,7 +15,7 @@ cases.push_reaches_only_a_live_topbar_module <- function()
     local live = module(true);
     ::Tactical.TopbarRoundInformation = live; X.push();
     check(live.pushed.len() == 1 && live.pushed[0].marker == 50.0 && live.pushed[0].enabled
-        && live.pushed[0].ours_percent == "—" && live.pushed[0].theirs_percent == "—", "empty state");
+        && !live.pushed[0].show_percentages && live.pushed[0].ours_percent == "—" && live.pushed[0].theirs_percent == "—", "empty state");
 };
 
 cases.state_presents_immediate_values_even_when_hidden <- function()
@@ -23,7 +23,7 @@ cases.state_presents_immediate_values_even_when_hidden <- function()
     world(); settings({Enabled = false});
     X.record("ours", 0.5, true);
     local state = X.state();
-    check(!state.enabled && state.ours_percent == "+100%" && state.ours_tone == "good", "first hit presentation");
+    check(!state.enabled && !state.show_percentages && state.ours_percent == "+100%" && state.ours_tone == "good", "first hit presentation");
     check(state.marker == 50.0 && near(state.emphasis, 0.55, 0.00001), "common outcome and warm-up");
 };
 
@@ -44,11 +44,11 @@ cases.tooltip_prioritises_rarity_and_keeps_detail_concise <- function()
 
 cases.result_payload_uses_completed_battle_and_shows_the_exact_tail <- function()
 {
-    world(); local values = settings(); X.begin();
+    world(); local values = settings({ShowPercentages = true}); X.begin();
     check(X.resultState() == null, "no result from an unfinished battle");
     feed("ours", array(2, 50), array(2, 1));
     local live = X.state(); X.finish(); local data = X.resultState();
-    check(data.enabled && data.ours_percent == "+100%" && data.theirs_percent == "—", "short battle readouts");
+    check(data.enabled && data.show_percentages && data.ours_percent == "+100%" && data.theirs_percent == "—", "short battle readouts");
     check(near(live.marker, 50.0 + 25.0 / 6.0, 0.0001) && near(live.emphasis, 0.6, 0.00001), "live bar is weighted and warming");
     check(data.marker == 75.0 && data.emphasis == 1.0 && data.text == "Top 25% of outcomes at these odds", "overview shows the raw tail at full emphasis");
     check(data.swing == "Net hit swing: 1.00 hits in your favour." && data.sample == "Small sample: 2 attacks.", "overview context without damping claims");

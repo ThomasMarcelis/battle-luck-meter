@@ -5,7 +5,8 @@ cases.native_outcome_and_math_bindings_are_logged_without_changing_payloads <- f
     world(); settings(); X.begin();
     local start = fields(::Logs.top());
     check(start.probe_abs == "1" && start.probe_min == "74" && start.probe_max == "74", "integer engine bindings are journaled");
-    check(start.version == X.Version && start.marker_model == "evidence_weight_v1", "start identifies the live marker model");
+    check(start.version == X.Version && start.marker_model == "evidence_weight_v1"
+        && start.ui_model == "relative_percent_option_v1" && start.show_percentages == "0", "start identifies the live UI contracts and default");
     X.finish();
     local native = {result = "win", title = "Victory", subTitle = "The enemy was destroyed in 4 rounds"};
     local payload = X.resultState(native), entry = fields(::Logs.top());

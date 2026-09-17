@@ -35,9 +35,10 @@ at the median for float noise. Rarity group sizes round upward with a 0.0001 per
 integer boundaries. Updates cost O(n) time and battle state uses O(n) space; no attack list is kept in game.
 
 The internal state and journal retain each side's immediate diagnostic delta, `100 * (hits / expected - 1)`,
-rounded half away from zero without weighting or a positive cap. `ui_model="bar_only_v1"` does not render
-those volatile percentages; the live surface is only the marker, and hover/results use exact hit and expected-hit
-totals. The engine binds `Math.abs`, `Math.min` and `Math.max` to integer functions (start-line
+rounded half away from zero without weighting or a positive cap. `ui_model="relative_percent_option_v1"`
+renders those volatile percentages on both surfaces only when `ShowPercentages` is enabled; it defaults off.
+The hidden row has no reserved height, and a setting push toggles the existing live view in place. Hover/results
+retain exact hit and expected-hit totals regardless of that option. The engine binds `Math.abs`, `Math.min` and `Math.max` to integer functions (start-line
 probes `probe_abs=1 probe_min=74 probe_max=74`), so diagnostic percentages and swing magnitudes take their magnitude
 through the float-preserving `::XBro.abs`, and `tests/fixtures.nut` emulates the integer bindings so a
 native call cannot creep back in. Rounded zero and undefined
@@ -52,8 +53,10 @@ verdict and sample wording); `marker_model="evidence_weight_v1"` selects the cur
 are always checked against the float-correct model, so a 0.4.1 journal still fails on the truncation defect.
 A checkpoint is recorded before it is judged, so a defective readout is one finding and the battle's end and
 pushes are still traced instead of degrading into missing-end findings. Presentation is checked against the
-validated runtime values to accommodate rounding ties. Legacy schema 3 receipts report both percentages and
-colour classes; `bar_only_v1` receipts reject those fields and report only track opacity and marker position.
+validated runtime values to accommodate rounding ties. Legacy 0.4.1/0.4.2 schema 3 receipts report both
+percentages and colour classes; 0.4.3 `bar_only_v1` receipts reject those fields and report only track opacity
+and marker position. The current UI contract reports `badges="hidden"` or `badges="rendered"`; only rendered
+badges carry exact percentage and tone fields.
 Schema 2 retains its original replay path.
 
 The probability model remains `displayed_chance_v1`. The auditor verifies this calculation and separately
@@ -64,13 +67,13 @@ future dice or unhooked/mod-replaced attack paths. Rarity assumes independent tr
 Both battle and results surfaces publish correlated bar state. Results also report their rendered rarity, side totals, net swing and sample context,
 including every replacement view when the native list reloads. A suppressed disabled result is acknowledged.
 An ended, closed battle without a results payload is incomplete evidence.
-`start` records version, all four model IDs, receipt transport, engine math probes and settings; `settings` records changes; `end` records totals; `close` records native
+`start` records version, all four model IDs, receipt transport, engine math probes and both settings; `settings` records changes; `end` records totals; `close` records native
 screen exit, including abandoned battles. `push` identifies intended state. JS writes `[xBroUI]` observations
 through MSU's existing session connection to Squirrel `logInfo`, with its own monotonic sequence. Native screen teardown disconnects the
 screen's Squirrel handle before destroying DOM; MSU's connection remains available. Origin battle/push IDs
 survive delayed receipts. The previous console transport produced no receipts in a live battle; confirm the
 replacement in the next live journal. Rendered exact result rows, inline marker position, opacity and display
-value are checked offline; legacy percentage fields remain version-aware; receipts do not prove
+value and conditional badge content are checked offline; legacy percentage fields remain model-aware; receipts do not prove
 visible geometry. Destruction of every rendered view is also reported. Views that never receive a push are not independently traced. Missing acknowledgements remain evidence gaps.
 
 Squirrel diagnostic failures are structured and also reported through `logError`; a failed `logInfo` falls back
@@ -89,7 +92,7 @@ python3 tools/package.py
 ```
 
 Checks cover both Squirrel versions, settings/hooks, deterministic journal replay, exclusions, nested/stale
-results, broken logging/UI, malformed evidence, altered pricing/calculations/DOM receipts, Node behavior and
+results, broken logging/UI, malformed evidence, altered pricing/calculations/conditional DOM receipts, legacy UI contracts, Node behavior and
 ES3 source syntax loading. The Python audit tests consume `tests/sample.nut` output from the real Squirrel
 emitter. Diagnostic captures, source references, reports and generated packages stay in ignored paths.
 

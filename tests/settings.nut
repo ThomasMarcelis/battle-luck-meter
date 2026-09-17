@@ -58,8 +58,12 @@ try
         local panel = system.getUIData()[X.ID];
         check(panel.name == X.Name && !panel.hidden && panel.pages.len() == 1, "settings page");
         local page = panel.pages[0].settings;
-        check(page.len() == 1 && page[0].id == "Enabled", "only visibility is configurable");
-        check(X.enabled() == true && writes == 0, "defaults without disk writes");
+        check(page.len() == 2 && page[0].id == "Enabled" && page[1].id == "ShowPercentages", "visibility and percentages are configurable");
+        local percentages = system.getPanel(X.ID).getSetting("ShowPercentages");
+        check(percentages.getName() == "Show relative hit percentages"
+            && percentages.getDescription().find("raw") != null && percentages.getDescription().find("swing sharply") != null,
+            "percentage setting explains volatility");
+        check(X.enabled() == true && !X.showPercentages() && writes == 0, "percentages default off without disk writes");
         system.updateSettingsFromJS({[X.ID] = {Enabled = {type = "bool", value = false}}});
         check(!X.enabled() && writes == 1 && ::Errors.len() == 0, "visibility persists outside a battle");
         system.updateSettingsFromJS({[X.ID] = {Enabled = {type = "bool", value = true}}});
@@ -70,13 +74,17 @@ try
         check(live.pushed.len() == 1 && live.pushed[0].enabled == false, "disabling mid-battle pushes the hidden state");
         system.updateSettingsFromJS({[X.ID] = {Enabled = {type = "bool", value = true}}});
         check(live.pushed.len() == 2 && live.pushed[1].enabled, "re-enabling pushes again");
+        system.updateSettingsFromJS({[X.ID] = {ShowPercentages = {type = "bool", value = true}}});
+        check(live.pushed.len() == 3 && live.pushed[2].show_percentages, "enabling percentages pushes the live state");
+        system.updateSettingsFromJS({[X.ID] = {ShowPercentages = {type = "bool", value = false}}});
+        check(live.pushed.len() == 4 && !live.pushed[3].show_percentages, "disabling percentages pushes the no-badge state");
     });
 
     test("old_minimum_setting_is_ignored_on_upgrade", function() {
         local previous = disk.ModSettings, oldWrites = writes;
         disk.ModSettings = {[X.ID] = {Enabled = true, MinAttacks = 30}};
         system.importPersistentSettings();
-        check(X.enabled() && !system.getPanel(X.ID).hasSetting("MinAttacks"), "old gate is not registered");
+        check(X.enabled() && !X.showPercentages() && !system.getPanel(X.ID).hasSetting("MinAttacks"), "old gate is not registered and new option defaults off");
         X.reset(); X.record("ours", 0.95, false);
         check(X.state().ours_percent == "-100%" && near(X.state().marker, 50.0 - 45.0 / 11.0, 0.0001), "old threshold cannot hide first attack");
         check(writes == oldWrites && disk.ModSettings[X.ID].MinAttacks == 30, "import leaves stored settings untouched");

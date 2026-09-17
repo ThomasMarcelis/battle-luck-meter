@@ -57,6 +57,9 @@ class AuditTests(unittest.TestCase):
         self.assertIn('battle 3:', output)
         self.assertIn('battle 4:', output)
         self.assertIn('You +88%', output)
+        self.assertTrue(any('event=start ' in line and 'version="0.4.4"' in line and
+                            'ui_model="relative_percent_option_v1"' in line and 'show_percentages=0' in line
+                            for line in self.lines))
         entries, errors = audit.journal(self.text)
         self.assertFalse(errors)
         self.assertTrue(any(e.get('on') == 'A" p=0 x="<>&%\n\\' for e in entries))
@@ -74,7 +77,7 @@ class AuditTests(unittest.TestCase):
             'for (local i = 0; i < 15; i++) longHits[i] = 0;\n'
             'play(longChances, longHits, true); X.tooltip(); X.finish(); closeBattle();\n'
             '// Settings outside a closed battle')
-        with NamedTemporaryFile(mode='w', suffix='.nut', dir='.tools') as tmp:
+        with NamedTemporaryFile(mode='w', suffix='.nut', dir='/tmp') as tmp:
             tmp.write(script); tmp.flush()
             run = subprocess.run(['.tools/sq30', tmp.name], text=True, capture_output=True, check=True)
         self.assertFalse(run.stderr)
@@ -97,7 +100,8 @@ class AuditTests(unittest.TestCase):
         for event, key, value in [('attempt','p','0.1'), ('attempt','side','"theirs"'), ('attempt','reason','"blocked"'),
                                   ('result','hit','0'), ('result','counted','0'), ('result','attempt','999'),
                                   ('state','ours_variance','0.9'), ('state','rarity','9'), ('state','marker','90'), ('state','weight','0.9'), ('state','emphasis','1'), ('state','ours_percent','"+10%"'), ('state','theirs_tone','"good"'),
-                                  ('end','ours_hits','999'), ('push','ours_percent','"invented"'), ('ui','emphasis','0.1'), ('ui','left','"99%25"')]:
+                                  ('end','ours_hits','999'), ('push','ours_percent','"invented"'), ('start','show_percentages','1'),
+                                  ('ui','emphasis','0.1'), ('ui','left','"99%25"')]:
             with self.subTest(event=event, key=key):
                 status, output = self.replay(self.change(event,key,value))
                 self.assertEqual(status, 1, output)
@@ -183,7 +187,9 @@ class AuditTests(unittest.TestCase):
         out = []
         for line in lines:
             line = re.sub(r'version="[^"]*"', 'version="0.4.1"',
-                          line.replace(' marker_model="evidence_weight_v1"', '').replace(' ui_model="bar_only_v1"', ''))
+                          line.replace(' marker_model="evidence_weight_v1"', '')
+                              .replace(' ui_model="relative_percent_option_v1"', '').replace(' ui_model="bar_only_v1"', ''))
+            line = re.sub(r' (show_percentages|badges)=("[^"]*"|\S+)', '', line)
             if 'event=tooltip ' in line:
                 line += ' interpretation="' + audit.LEGACY_INTERPRETATION.replace("'", "%27") + '"'
             line = re.sub(r'\bweight=\S+', 'weight=0.1', line)
@@ -194,20 +200,88 @@ class AuditTests(unittest.TestCase):
                 line = line.replace('sample="Small sample: 1 attack."', 'sample="Small sample: 1 attack. Below 10 attacks, the bar stays closer to the centre."')
             line = line.replace('Bottom 5%25 of outcomes at these odds', 'Bottom 5%25 unluckiest battles')
             if line.startswith('[xBroUI]') and 'status="rendered"' in line:
+                for key in audit.READOUT_FIELDS:
+                    if key not in ('marker', 'emphasis'):
+                        line = re.sub(rf' {key}=("[^"]*"|\S+)', '', line)
                 pid = re.search(r'\bpush=(\d+)', line)[1]
                 line += ''.join(f' {key}={value}' for key, value in push_readouts[pid].items())
             out.append(line)
         return self.renumber(out)
 
-    def test_bar_only_ui_model_omits_percentage_receipts_and_rejects_hidden_badges(self):
-        self.assertTrue(any('event=start ' in line and 'version="0.4.3"' in line and
-                            'ui_model="bar_only_v1"' in line for line in self.lines))
+    def percentage_visible_0_4_2(self, lines):
+        push_readouts = {}
+        for line in lines:
+            if line.startswith('[xBro]') and ' event=push ' in line:
+                pid = re.search(r'\bpush=(\d+)', line)[1]
+                push_readouts[pid] = {key: re.search(rf'\b{key}=("[^"]*"|\S+)', line)[1]
+                                      for key in audit.READOUT_FIELDS if key not in ('marker', 'emphasis')}
+        out = []
+        for line in lines:
+            line = re.sub(r'version="[^"]*"', 'version="0.4.2"',
+                          line.replace(' ui_model="relative_percent_option_v1"', ''))
+            line = re.sub(r' (show_percentages|badges)=("[^"]*"|\S+)', '', line)
+            if line.startswith('[xBroUI]') and 'status="rendered"' in line:
+                for key in audit.READOUT_FIELDS:
+                    if key not in ('marker', 'emphasis'):
+                        line = re.sub(rf' {key}=("[^"]*"|\S+)', '', line)
+                pid = re.search(r'\bpush=(\d+)', line)[1]
+                line += ''.join(f' {key}={value}' for key, value in push_readouts[pid].items())
+            out.append(line)
+        return self.renumber(out)
+
+    def bar_only_0_4_3(self, lines):
+        out = []
+        for line in lines:
+            line = re.sub(r'version="[^"]*"', 'version="0.4.3"',
+                          line.replace(' ui_model="relative_percent_option_v1"', ' ui_model="bar_only_v1"'))
+            line = re.sub(r' (show_percentages|badges)=("[^"]*"|\S+)', '', line)
+            if line.startswith('[xBroUI]'):
+                for key in audit.READOUT_FIELDS:
+                    if key not in ('marker', 'emphasis'):
+                        line = re.sub(rf' {key}=("[^"]*"|\S+)', '', line)
+            out.append(line)
+        return self.renumber(out)
+
+    def test_current_ui_receipts_are_conditional_and_reject_badge_tampering(self):
+        self.assertTrue(any('event=start ' in line and 'version="0.4.4"' in line and
+                            'ui_model="relative_percent_option_v1"' in line for line in self.lines))
         rendered = [line for line in self.lines if line.startswith('[xBroUI]') and 'status="rendered"' in line]
-        self.assertTrue(rendered)
-        for line in rendered:
-            self.assertFalse(any(re.search(rf'\b{key}=', line) for key in
-                                 ('ours_percent', 'theirs_percent', 'ours_tone', 'theirs_tone')))
+        hidden = [line for line in rendered if 'badges="hidden"' in line]
+        visible = [line for line in rendered if 'badges="rendered"' in line]
+        self.assertTrue(hidden and visible)
+        for line in hidden:
+            self.assertFalse(any(re.search(rf'\b{key}=', line) for key in audit.READOUT_FIELDS[2:]))
+        for line in visible:
+            self.assertTrue(all(re.search(rf'\b{key}=', line) for key in audit.READOUT_FIELDS[2:]))
         lines = self.lines.copy()
+        index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'badges="hidden"' in line)
+        lines[index] += ' ours_percent="+1900%25"'
+        status, output = self.replay(lines)
+        self.assertEqual(status, 1, output)
+        self.assertIn('hidden badge receipt contains a percentage readout', output)
+        lines = self.lines.copy()
+        index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'badges="rendered"' in line)
+        lines[index] = lines[index].replace('badges="rendered"', 'badges="hidden"')
+        status, output = self.replay(lines)
+        self.assertEqual(status, 1, output)
+        self.assertIn('badges', output)
+        lines = self.lines.copy()
+        index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'badges="rendered"' in line)
+        lines[index] = re.sub(r'ours_tone="[^"]*"', 'ours_tone="neutral"', lines[index])
+        status, output = self.replay(lines)
+        self.assertEqual(status, 1, output)
+        self.assertIn('ours_tone', output)
+
+    def test_legacy_0_4_1_through_0_4_3_ui_contracts_still_replay(self):
+        emitted = self.battle(7)
+        variants = [('0.4.1', self.legacy(emitted)), ('0.4.2', self.percentage_visible_0_4_2(emitted)),
+                    ('0.4.3', self.bar_only_0_4_3(emitted))]
+        for version, lines in variants:
+            with self.subTest(version=version):
+                status, output = self.replay(lines)
+                self.assertEqual(status, 0, output)
+                self.assertIn('0 errors, 0 model discrepancies, 0 evidence gaps', output)
+        lines = self.bar_only_0_4_3(emitted)
         index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'status="rendered"' in line)
         lines[index] += ' ours_percent="+1900%25"'
         status, output = self.replay(lines)

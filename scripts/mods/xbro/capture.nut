@@ -138,7 +138,7 @@
         theirs_n = s.theirs.n, theirs_hits = s.theirs.hits, theirs_expected = s.theirs.expected, theirs_variance = b.theirs.sumPQ,
         rarity = s.rarity, weight = s.weight, marker = s.marker, emphasis = s.emphasis, swing = s.swing,
         ours_percent = s.ours.percent, ours_tone = s.ours.tone, theirs_percent = s.theirs.percent, theirs_tone = s.theirs.tone,
-        enabled = this.enabled(), text = s.text});
+        enabled = this.enabled(), show_percentages = this.showPercentages(), text = s.text});
 };
 
 ::XBro.finish <- function()

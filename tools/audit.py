@@ -129,7 +129,7 @@ def legacy_main(argv):
 # attempted native call must reconcile, including errors and asynchronous UI reports.
 JOURNAL_LINE = re.compile(r'\[(xBro|xBroUI)\] ([^<\n]*)')
 TOKEN = re.compile(r'([a-z_]+)=("[^"\r\n]*"|[^\s"=]+)(?: +|$)')
-BOOLS = {'enabled', 'pending', 'allow_diversion', 'target_present', 'alive', 'attackable', 'uses_hitchance',
+BOOLS = {'enabled', 'show_percentages', 'pending', 'allow_diversion', 'target_present', 'alive', 'attackable', 'uses_hitchance',
          'able_to_die', 'ranged', 'projectile', 'by_controlled', 'on_controlled', 'hit', 'counted', 'ended', 'allied'}
 REQUIRED = {
     'start': 'version model enabled min_attacks',
@@ -297,7 +297,7 @@ def float32(value):
 # A start line without marker_model is a 0.4.0/0.4.1 journal: linear warm-up that reached
 # the raw tail at attack 10, results retaining that damping, and the old verdict/sample wording.
 MARKER_MODELS = {None: True, 'evidence_weight_v1': False}
-UI_MODELS = {None: True, 'bar_only_v1': False}
+UI_MODELS = {None: 'always', 'bar_only_v1': 'never', 'relative_percent_option_v1': 'setting'}
 LEGACY_INTERPRETATION = ("Compared with battles with the same hit chances; equally lucky or unlucky outcomes count too. "
                          "Rarity uses the full calculation, before the bar's early damping.")
 
@@ -467,7 +467,7 @@ def audit_journal(text, show_attacks=False):
                 raise ValueError('negative battle ID')
             b = battles.setdefault(bid, {'start': None, 'end': None, 'closed': False, 'attempts': {}, 'results': set(), 'attacks': [],
                                        'mass': [1.0], 'excluded': 0, 'enabled': None, 'minimum': None, 'states': 0, 'needs_state': False, 'needs_push': False,
-                                       'presentation': None, 'legacy': False, 'percent_badges': True})
+                                       'presentation': None, 'legacy': False, 'percent_badges': 'always', 'show_percentages': None})
             event = e['event']
             if e['channel'] == 'xBro' and b['needs_push'] and event != 'push':
                 errors.append(f'battle {bid}: missing push after state')
@@ -489,6 +489,10 @@ def audit_journal(text, show_attacks=False):
                 b['start'] = e
             if event in ('start', 'settings'):
                 b['enabled'], b['minimum'] = e['enabled'], 10 if v3 else number(e, 'min_attacks', True)
+                if v3 and b['percent_badges'] == 'setting':
+                    if 'show_percentages' not in e:
+                        raise ValueError(f'{event}: missing show_percentages')
+                    b['show_percentages'] = e['show_percentages']
                 if event == 'settings':
                     b['needs_state'] = True
                 if not 4 <= b['minimum'] <= 30:
@@ -552,6 +556,8 @@ def audit_journal(text, show_attacks=False):
                     # from the runtime's own float32 values so rounding ties keep their side.
                     displayed = presentation_v3(e, b['legacy'])
                     expected.update(displayed)
+                    if b['percent_badges'] == 'setting':
+                        expected['show_percentages'] = b['show_percentages']
                 else:
                     expected = calculated(b['attacks'], minimum)
                     displayed = presentation(number(e, 'z'), len(b['attacks']), minimum)
@@ -612,6 +618,8 @@ def audit_journal(text, show_attacks=False):
                             verify_side_text(e, want)
                     verify_fields(e, {k: want[k] for k in (('attack',) + READOUT_FIELDS if v3 else ('attack', 'pending', 'offset', 'text'))})
                     verify_fields(e, {'enabled': b['enabled']})
+                    if v3 and b['percent_badges'] == 'setting':
+                        verify_fields(e, {'show_percentages': b['show_percentages']})
             elif event == 'delivery':
                 if number(e, 'push', True) not in pushes or e['status'] != 'disconnected':
                     raise ValueError('invalid delivery report')
@@ -632,10 +640,21 @@ def audit_journal(text, show_attacks=False):
                     verify_fields(e, {'display': '' if push['enabled']=='1' else 'none'})
                     if v3:
                         readouts = tuple(k for k in READOUT_FIELDS if k not in ('marker', 'emphasis'))
-                        if b['percent_badges']:
+                        if b['percent_badges'] == 'always':
                             verify_fields(e, {k: push[k] for k in readouts})
-                        elif any(k in e for k in readouts):
+                            if 'badges' in e:
+                                raise ValueError('legacy percentage UI receipt contains badge mode')
+                        elif b['percent_badges'] == 'never' and any(k in e for k in readouts):
                             raise ValueError('bar-only UI receipt contains a percentage readout')
+                        elif b['percent_badges'] == 'never' and 'badges' in e:
+                            raise ValueError('bar-only UI receipt contains badge mode')
+                        elif b['percent_badges'] == 'setting':
+                            shown = push['enabled'] == '1' and push['show_percentages'] == '1'
+                            verify_fields(e, {'badges': 'rendered' if shown else 'hidden'})
+                            if shown:
+                                verify_fields(e, {k: push[k] for k in readouts})
+                            elif any(k in e for k in readouts):
+                                raise ValueError('hidden badge receipt contains a percentage readout')
                         verify_fields(e, {'emphasis': float(push['emphasis'])})
                     else:
                         verify_fields(e, {'text': push['text'], 'pending': push['pending']})
