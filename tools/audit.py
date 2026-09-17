@@ -5,7 +5,9 @@ Exit 0: complete journal checks passed within the printed limits.
 Exit 1: invalid/inconsistent evidence or a source-model pricing discrepancy.
 Exit 2: incomplete evidence (including legacy v0.2 arithmetic-only logs).
 """
+from collections import namedtuple
 import math
+from statistics import NormalDist
 import struct
 from pathlib import Path
 import sys
@@ -295,37 +297,81 @@ def float32(value):
 
 
 # A start line without marker_model is a 0.4.0/0.4.1 journal: linear warm-up that reached
-# the raw tail at attack 10, results retaining that damping, and the old verdict/sample wording.
-MARKER_MODELS = {None: True, 'evidence_weight_v1': False}
-UI_MODELS = {None: 'always', 'bar_only_v1': 'never', 'relative_percent_option_v1': 'setting'}
+# the raw tail at attack 10, results retaining that damping, and the old verdict/sample
+# wording. 'evidence_weight_v1' is the 0.4.2-0.4.4 percentile axis; 'probit_evidence_weight_v1'
+# is the 0.4.5 standard-deviation axis reading the mid-p tail.
+MARKER_MODELS = {None: 'linear', 'evidence_weight_v1': 'percentile', 'probit_evidence_weight_v1': 'probit'}
+UI_MODELS = {None: 'always', 'bar_only_v1': 'never', 'relative_percent_option_v1': 'setting',
+             'smoothed_percent_option_v1': 'setting'}
+# Only 0.4.5 weights the live badges; every earlier contract rendered the exact figure live.
+Model = namedtuple('Model', 'legacy axis smoothed badges')
+DEFAULT_MODEL = Model(False, 'percentile', False, 'always')
 LEGACY_INTERPRETATION = ("Compared with battles with the same hit chances; equally lucky or unlucky outcomes count too. "
                          "Rarity uses the full calculation, before the bar's early damping.")
 
+# The runtime's sigma axis: +-3 sigma spans the track, clipped at exactly Phi(-+3).
+SIGMA_SCALE = float32(50/3)
+PROBIT_CLIP = 0.0013498980316301035
 
-def presentation_v3(s, legacy=False):
+
+def probit(p):
+    """The true inverse normal CDF of the same clipped tail the runtime reads.
+
+    Deliberately not the runtime's rational approximation: replaying that polynomial would
+    only prove the same coefficients were written twice. Checking against the real quantile
+    verifies the approximation itself, within the tolerance its accuracy earns.
+    """
+    return NormalDist().inv_cdf(min(float32(1-float32(PROBIT_CLIP)), max(float32(PROBIT_CLIP), float32(p))))
+
+
+def badge(relative, side, weight=None):
+    """Round half away from zero on the float, then colour from the player's point of view."""
+    if relative is None:
+        return '\u2014', 'neutral'
+    if weight is not None:
+        relative = float32(relative*weight)
+    change = math.floor(float32(abs(relative)+0.5)) * (-1 if relative < 0 else 1)
+    return ('0%' if change == 0 else f'{change:+d}%',
+            'neutral' if not change else 'good' if (change > 0) == (side == 'ours') else 'bad')
+
+
+def presentation_v3(s, model=DEFAULT_MODEL):
     n, rarity = int(s['attack']), float(s['rarity'])
-    weight = min(n / 10, 1.0) if legacy else n / (n + 10)
+    weight = min(n / 10, 1.0) if model.legacy else n / (n + 10)
     text = 'Even'
     if rarity != 50:
         group = max(1, math.ceil(min(rarity, 100-rarity)-0.0001))
         side = 'Bottom' if rarity < 50 else 'Top'
-        text = (f'{side} {group}% {"unluckiest" if rarity < 50 else "luckiest"} battles' if legacy
+        text = (f'{side} {group}% {"unluckiest" if rarity < 50 else "luckiest"} battles' if model.legacy
                 else f'{side} {group}% of outcomes at these odds')
-    out = dict(weight=weight, marker=50+(rarity-50)*weight, emphasis=0.5+0.5*min(n / 10, 1.0), text=text)
+    out = dict(weight=weight)
+    if model.axis == 'probit':
+        if 'midp' not in s:
+            raise ValueError('missing midp')
+        # Chain the bar from the runtime's own axis position where the journal carries one,
+        # so a wrong axis and a wrong bar stay two findings, reported tail before geometry.
+        out['z'] = derived = probit(float(s['midp']))
+        z = float(s['z']) if 'z' in s else derived
+        out['marker'] = float32(50+float32(float32(SIGMA_SCALE*z)*weight))
+    else:
+        out['marker'] = 50+(rarity-50)*weight
+    out.update(emphasis=0.5+0.5*min(n / 10, 1.0), text=text)
     for side in SIDES:
         expected = float(s[side+'_expected'])
-        change = None
+        relative = None
         if expected > 0:
             # Each runtime arithmetic operation rounds to a Squirrel float. The magnitude
             # keeps its fraction: journals whose engine Math.abs truncated it fail here.
             relative = float32(100*float32(float32(int(s[side+'_hits'])/float32(expected))-1))
-            change = math.floor(float32(abs(relative)+0.5)) * (-1 if relative < 0 else 1)
-        out[side+'_percent'] = '—' if change is None else '0%' if change == 0 else f'{change:+d}%'
-        out[side+'_tone'] = 'neutral' if not change else 'good' if (change > 0) == (side == 'ours') else 'bad'
+        count = int(s[side+'_n'])
+        live = float32(count/float32(count+10.0)) if model.smoothed else None
+        out[side+'_percent'], out[side+'_tone'] = badge(relative, side, live)
+        if model.smoothed:
+            out[side+'_exact_percent'], out[side+'_exact_tone'] = badge(relative, side)
     return out
 
 
-def calculated_v3(attacks, mass, legacy=False):
+def calculated_v3(attacks, mass, model=DEFAULT_MODEL):
     out = {'attack': len(attacks)}
     for side in SIDES:
         sample = [a for a in attacks if a['side'] == side]
@@ -343,8 +389,12 @@ def calculated_v3(attacks, mass, legacy=False):
     total = math.fsum(mass)
     lower, upper = math.fsum(mass[:observed+1])/total, math.fsum(mass[observed:])/total
     out['rarity'] = 100*lower if lower < 0.5-1e-7 else 100*(1-upper) if upper < 0.5-1e-7 else 50.0
+    if model.axis == 'probit':
+        # Mid-p: everything strictly below the observed count plus half of its own mass.
+        # The two sides sum to exactly one, so the bar's sign falls out of one number.
+        out['midp'] = math.fsum(mass[:observed])/total + 0.5*(mass[observed]/total)
     out['swing'] = float32(float32(out['ours_hits']-out['ours_expected'])-float32(out['theirs_hits']-out['theirs_expected']))
-    out.update(presentation_v3(out, legacy))
+    out.update(presentation_v3(out, model))
     return out
 
 
@@ -419,13 +469,22 @@ def verify_tooltip_v3(e, s, legacy=False):
     verify_tooltip_side_text_v3(e, s, legacy)
 
 
+# Derived geometry must match the runtime's own inputs almost exactly; accumulated sums
+# drift with battle length. The axis tolerance is what the runtime's rational approximation
+# of the inverse normal is worth: it stays within 8.6e-4 sigma of the true quantile in
+# float32, so 0.002 sigma leaves a margin of two and is still only 0.03 bar points.
+TIGHT_FIELDS = ('offset', 'marker', 'weight', 'emphasis')
+PROBIT_TOLERANCE = 0.002
+
+
 def verify_fields(e, expected):
     for key, want in expected.items():
         if key not in e:
             raise ValueError(f'missing {key}')
         if isinstance(want, float):
             # Single-precision accumulation in the game, double precision here.
-            tolerance = max(0.00002, int(expected.get('attack', 0))*0.000002) if key not in ('offset', 'marker', 'weight', 'emphasis') else 0.00002
+            tolerance = (0.00002 if key in TIGHT_FIELDS else PROBIT_TOLERANCE if key == 'z'
+                         else max(0.00002, int(expected.get('attack', 0))*0.000002))
             if abs(number(e, key)-want) > tolerance:
                 raise ValueError(f'{key}: wrote {e[key]}, derived {want:.9g}')
         elif str(want) != e[key]:
@@ -467,7 +526,7 @@ def audit_journal(text, show_attacks=False):
                 raise ValueError('negative battle ID')
             b = battles.setdefault(bid, {'start': None, 'end': None, 'closed': False, 'attempts': {}, 'results': set(), 'attacks': [],
                                        'mass': [1.0], 'excluded': 0, 'enabled': None, 'minimum': None, 'states': 0, 'needs_state': False, 'needs_push': False,
-                                       'presentation': None, 'legacy': False, 'percent_badges': 'always', 'show_percentages': None})
+                                       'presentation': None, 'model': DEFAULT_MODEL, 'show_percentages': None})
             event = e['event']
             if e['channel'] == 'xBro' and b['needs_push'] and event != 'push':
                 errors.append(f'battle {bid}: missing push after state')
@@ -484,12 +543,13 @@ def audit_journal(text, show_attacks=False):
                     raise ValueError('unsupported marker model')
                 if e.get('ui_model') not in UI_MODELS:
                     raise ValueError('unsupported UI model')
-                b['legacy'] = MARKER_MODELS[e.get('marker_model')]
-                b['percent_badges'] = UI_MODELS[e.get('ui_model')]
+                axis = MARKER_MODELS[e.get('marker_model')]
+                b['model'] = Model(axis == 'linear', axis, e.get('ui_model') == 'smoothed_percent_option_v1',
+                                   UI_MODELS[e.get('ui_model')])
                 b['start'] = e
             if event in ('start', 'settings'):
                 b['enabled'], b['minimum'] = e['enabled'], 10 if v3 else number(e, 'min_attacks', True)
-                if v3 and b['percent_badges'] == 'setting':
+                if v3 and b['model'].badges == 'setting':
                     if 'show_percentages' not in e:
                         raise ValueError(f'{event}: missing show_percentages')
                     b['show_percentages'] = e['show_percentages']
@@ -551,12 +611,12 @@ def audit_journal(text, show_attacks=False):
                 if bid != 0:
                     verify_fields(e, {'enabled': b['enabled']} if v3 else {'enabled': b['enabled'], 'min_attacks': b['minimum']})
                 if v3:
-                    expected = calculated_v3(b['attacks'], b['mass'], b['legacy'])
+                    expected = calculated_v3(b['attacks'], b['mass'], b['model'])
                     # Raw arithmetic is verified independently below; readouts are formatted
                     # from the runtime's own float32 values so rounding ties keep their side.
-                    displayed = presentation_v3(e, b['legacy'])
+                    displayed = presentation_v3(e, b['model'])
                     expected.update(displayed)
-                    if b['percent_badges'] == 'setting':
+                    if b['model'].badges == 'setting':
                         expected['show_percentages'] = b['show_percentages']
                 else:
                     expected = calculated(b['attacks'], minimum)
@@ -596,19 +656,24 @@ def audit_journal(text, show_attacks=False):
                 if e['status'] not in ('requested', 'unavailable'):
                     raise ValueError('unknown delivery status')
                 if bid != 0 and b['minimum'] is not None:
-                    want = calculated_v3(b['attacks'], b['mass'], b['legacy']) if v3 else calculated(b['attacks'], b['minimum'])
+                    want = calculated_v3(b['attacks'], b['mass'], b['model']) if v3 else calculated(b['attacks'], b['minimum'])
                     if b['presentation'] is not None:
                         want.update(b['presentation'])
                     if e['surface'] == 'results':
                         if not b['end']:
                             raise ValueError('results payload before battle end')
                         if v3:
-                            if not b['legacy']:
+                            if not b['model'].legacy:
                                 # The overview shows the raw tail at full emphasis.
                                 want.update(marker=float(b['end']['rarity']), emphasis=1.0)
+                            if b['model'].smoothed:
+                                # Only the live surface is smoothed; the overview is exact.
+                                for side in SIDES:
+                                    want[side+'_percent'] = want[side+'_exact_percent']
+                                    want[side+'_tone'] = want[side+'_exact_tone']
                             verify_side_text_v3(e, want, compact=True)
                             verify_fields(e, {'text': want['text'] if b['attacks'] else 'No attacks recorded',
-                                              'sample': sample_text(len(b['attacks']), b['legacy']) if b['attacks'] else ''})
+                                              'sample': sample_text(len(b['attacks']), b['model'].legacy) if b['attacks'] else ''})
                             if b['attacks']:
                                 verify_swing_text(e['swing'], float(want['swing']))
                             else:
@@ -618,7 +683,7 @@ def audit_journal(text, show_attacks=False):
                             verify_side_text(e, want)
                     verify_fields(e, {k: want[k] for k in (('attack',) + READOUT_FIELDS if v3 else ('attack', 'pending', 'offset', 'text'))})
                     verify_fields(e, {'enabled': b['enabled']})
-                    if v3 and b['percent_badges'] == 'setting':
+                    if v3 and b['model'].badges == 'setting':
                         verify_fields(e, {'show_percentages': b['show_percentages']})
             elif event == 'delivery':
                 if number(e, 'push', True) not in pushes or e['status'] != 'disconnected':
@@ -640,15 +705,15 @@ def audit_journal(text, show_attacks=False):
                     verify_fields(e, {'display': '' if push['enabled']=='1' else 'none'})
                     if v3:
                         readouts = tuple(k for k in READOUT_FIELDS if k not in ('marker', 'emphasis'))
-                        if b['percent_badges'] == 'always':
+                        if b['model'].badges == 'always':
                             verify_fields(e, {k: push[k] for k in readouts})
                             if 'badges' in e:
                                 raise ValueError('legacy percentage UI receipt contains badge mode')
-                        elif b['percent_badges'] == 'never' and any(k in e for k in readouts):
+                        elif b['model'].badges == 'never' and any(k in e for k in readouts):
                             raise ValueError('bar-only UI receipt contains a percentage readout')
-                        elif b['percent_badges'] == 'never' and 'badges' in e:
+                        elif b['model'].badges == 'never' and 'badges' in e:
                             raise ValueError('bar-only UI receipt contains badge mode')
-                        elif b['percent_badges'] == 'setting':
+                        elif b['model'].badges == 'setting':
                             shown = push['enabled'] == '1' and push['show_percentages'] == '1'
                             verify_fields(e, {'badges': 'rendered' if shown else 'hidden'})
                             if shown:
@@ -685,10 +750,10 @@ def audit_journal(text, show_attacks=False):
                 if b['minimum'] is None:
                     continue
                 if v3:
-                    s = calculated_v3(b['attacks'], b['mass'], b['legacy'])
+                    s = calculated_v3(b['attacks'], b['mass'], b['model'])
                     if b['presentation'] is not None:
                         s.update(b['presentation'])
-                    verify_tooltip_v3(e, s, b['legacy'])
+                    verify_tooltip_v3(e, s, b['model'].legacy)
                 else:
                     s = calculated(b['attacks'], b['minimum'])
                     if b['presentation'] is not None:
@@ -738,8 +803,10 @@ def audit_journal(text, show_attacks=False):
         if b['minimum'] is not None:
             print(f'battle {bid}: {len(b["attempts"])} attempts, {len(b["results"])} results, {b["excluded"]} excluded, {b["states"]} checkpoints')
             if b['start'] and b['start']['schema'] == '3':
-                s = calculated_v3(b['attacks'], b['mass'], b['legacy'])
-                print(f'  You {s["ours_percent"]} | Enemy {s["theirs_percent"]} | {s["text"]} | rarity {s["rarity"]:.2f} | live marker {s["marker"]:.2f}')
+                s = calculated_v3(b['attacks'], b['mass'], b['model'])
+                # Report what the finished battle showed: the exact per-side figures.
+                shown = '_exact_percent' if b['model'].smoothed else '_percent'
+                print(f'  You {s["ours"+shown]} | Enemy {s["theirs"+shown]} | {s["text"]} | rarity {s["rarity"]:.2f} | live marker {s["marker"]:.2f}')
             else:
                 print('  '+describe(b['end'] if b['end'] else summary(b['attacks'], b['minimum'])))
     if not any(bid > 0 for bid in battles):

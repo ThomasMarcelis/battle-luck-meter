@@ -7,7 +7,7 @@
     };
     page.addBooleanSetting("Enabled", true, "Show luck meter", "Show luck during battle and after the brother cards on the results screen.").addAfterChangeCallback(refresh);
     page.addBooleanSetting("ShowPercentages", false, "Show relative hit percentages",
-        "Show raw relative hit percentages for you and the enemy. These raw percentages can swing sharply in small samples.").addAfterChangeCallback(refresh);
+        "Show how each side's hits compare with expected hits. During battle the figures are scaled by how many attacks that side has made; the results screen shows them exactly.").addAfterChangeCallback(refresh);
 };
 
 ::XBro.registerTooltips <- function()
@@ -89,12 +89,15 @@
 };
 
 // The capture boundary stops recording at battle end. No actor references or
-// saved history enter JS. The overview shows the exact result, not the live weighting.
+// saved history enter JS. The overview shows the exact result, not the live smoothing:
+// the exact tail at full emphasis and each side's unweighted hit percentage.
 ::XBro.resultState <- function( _combatInformation = null )
 {
     if (!this.Battle.ended) return null;
     local data = this.state(), s = this.summary();
     data.marker = s.rarity; data.emphasis = 1.0;
+    data.ours_percent = s.ours.exactPercent; data.ours_tone = s.ours.exactTone;
+    data.theirs_percent = s.theirs.exactPercent; data.theirs_tone = s.theirs.exactTone;
     data.text <- s.n == 0 ? "No attacks recorded" : s.text;
     data.swing <- s.n == 0 ? "" : this.swingText(s.swing);
     data.sample <- s.n == 0 ? "" : this.sampleText(s.n);

@@ -23,8 +23,8 @@ cases.state_presents_immediate_values_even_when_hidden <- function()
     world(); settings({Enabled = false});
     X.record("ours", 0.5, true);
     local state = X.state();
-    check(!state.enabled && !state.show_percentages && state.ours_percent == "+100%" && state.ours_tone == "good", "first hit presentation");
-    check(state.marker == 50.0 && near(state.emphasis, 0.55, 0.00001), "common outcome and warm-up");
+    check(!state.enabled && !state.show_percentages && state.ours_percent == "+9%" && state.ours_tone == "good", "first hit presentation is weighted");
+    check(near(state.marker, 51.02195, 0.0002) && near(state.emphasis, 0.55, 0.00001), "mid-p step and warm-up");
 };
 
 cases.tooltip_prioritises_rarity_and_keeps_detail_concise <- function()
@@ -36,7 +36,7 @@ cases.tooltip_prioritises_rarity_and_keeps_detail_concise <- function()
     check(rows[2].text == "You: 0/1 hits vs 0.95 expected", "precise expected hits");
     check(rows[3].text == "Enemy: 0/0 hits vs 0.00 expected", "empty side stays concise");
     check(rows[4].text == "Net: 0.95 hits against you." && rows[5].text == "Small sample: 1 attack counted.", "concise context");
-    check(near(s.marker, 50.0 - 45.0 / 11.0, 0.0001) && rows[1].text == "Bottom 5% of outcomes at these odds", "tooltip header is the exact tail, bar is weighted");
+    check(near(s.marker, 47.030373, 0.0002) && rows[1].text == "Bottom 5% of outcomes at these odds", "tooltip header is the exact tail, bar is weighted");
     feed("theirs", array(9, 50), array(9, 0));
     rows = X.tooltip();
     check(rows[3].text == "Enemy: 0/9 hits vs 4.50 expected" && rows[5].text == "10 attacks counted.", "misses end warm-up too");
@@ -48,8 +48,9 @@ cases.result_payload_uses_completed_battle_and_shows_the_exact_tail <- function(
     check(X.resultState() == null, "no result from an unfinished battle");
     feed("ours", array(2, 50), array(2, 1));
     local live = X.state(); X.finish(); local data = X.resultState();
-    check(data.enabled && data.show_percentages && data.ours_percent == "+100%" && data.theirs_percent == "—", "short battle readouts");
-    check(near(live.marker, 50.0 + 25.0 / 6.0, 0.0001) && near(live.emphasis, 0.6, 0.00001), "live bar is weighted and warming");
+    check(data.enabled && data.show_percentages && data.ours_percent == "+100%" && data.theirs_percent == "—", "results readouts are exact, not weighted");
+    check(live.ours_percent == "+17%" && live.ours_tone == "good", "the live badge for the same battle is weighted");
+    check(near(live.marker, 53.195591, 0.0002) && near(live.emphasis, 0.6, 0.00001), "live bar is on the sigma axis and warming");
     check(data.marker == 75.0 && data.emphasis == 1.0 && data.text == "Top 25% of outcomes at these odds", "overview shows the raw tail at full emphasis");
     check(data.swing == "Net hit swing: 1.00 hits in your favour." && data.sample == "Small sample: 2 attacks.", "overview context without damping claims");
     check(data.text == X.tooltip()[1].text, "result and tooltip share undamped rarity");

@@ -63,6 +63,8 @@
         var info = {origin_battle: data.battle, push: data.push, view: view ? view.id : 0, status: status, surface: data.surface};
         if (view && status === 'rendered') {
             info.emphasis = view.track.get(0).style.opacity;
+            // The inline style is the pushed target, not the position the CSS transition
+            // is currently interpolating through, so the receipt stays exact.
             info.left = view.marker.get(0).style.left;
             info.display = view.root.get(0).style.display;
             info.badges = view.readouts.get(0).style.display === 'none' ? 'hidden' : 'rendered';

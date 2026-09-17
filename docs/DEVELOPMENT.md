@@ -8,7 +8,7 @@ and reports observed DOM values; receipts never update game or meter state.
 | `scripts/!mods_preload/mod_xbro.nut` | Registration, attack/battle/topbar/results hooks, delivery status |
 | `scripts/mods/xbro/core.nut` | Namespace, per-battle counters, session sequence, safe journal encoding |
 | `scripts/mods/xbro/capture.nut` | Eligibility/pricing inputs, pre-call attempts, linked results, calculation checkpoints |
-| `scripts/mods/xbro/stats.nut` | Incremental favorable-outcome distribution, rarity, evidence weighting and hit percentages |
+| `scripts/mods/xbro/stats.nut` | Incremental favorable-outcome distribution, rarity, mid-p sigma axis, evidence weighting and hit percentages |
 | `scripts/mods/xbro/ui.nut` | Settings history, tooltips, final result payload, correlated pushes |
 | `ui/mods/xbro/xbro.js`, `xbro.css` | Native bar and scrolling result summary, DOM receipts, stale push rejection, teardown |
 | `tools/audit.py` | Strict journal replay and reference-pricing comparison; legacy arithmetic replay |
@@ -17,8 +17,9 @@ and reports observed DOM values; receipts never update game or meter state.
 
 The native results `queryData` payload carries `xbroLuck` only for a completed battle. The Statistics panel
 appends the summary after its cards, using the same calculation and a concise form of the tooltip's side totals.
-The verdict and the overview bar show the raw rarity at full emphasis, without the live bar's evidence
-weighting. Aligned side summaries, net hit swing and sample context remain readable in the native scroll
+The verdict and the overview bar show the exact rarity at full emphasis, and enabled badges show the exact
+unweighted percentages, without the live bar's sigma axis or evidence weighting: only the live surface is
+smoothed. Aligned side summaries, net hit swing and sample context remain readable in the native scroll
 area; content determines the card height. Hover uses a native header row for the verdict, then concise side
 attack counts, expected hits, net swing and sample size.
 Its content scrolls with the roster; list replacement and screen destruction dispose the view and tooltip.
@@ -34,29 +35,57 @@ an own hit or enemy miss. Summary reads normalize total mass and use inclusive t
 at the median for float noise. Rarity group sizes round upward with a 0.0001 percentage-point tolerance at
 integer boundaries. Updates cost O(n) time and battle state uses O(n) space; no attack list is kept in game.
 
-The internal state and journal retain each side's immediate diagnostic delta, `100 * (hits / expected - 1)`,
-rounded half away from zero without weighting or a positive cap. `ui_model="relative_percent_option_v1"`
-renders those volatile percentages on both surfaces only when `ShowPercentages` is enabled; it defaults off.
+The same read also takes the mid-p lower tail, mass strictly below the observed count plus half of the count's
+own mass. The two sides sum to exactly one, so the bar's sign comes from a single number and a count sitting at
+the median is exactly neutral, instead of the percentile axis's pinning at 50 followed by a jump of a whole
+outcome. `::XBro.probit` converts that tail to standard deviations with a central rational approximation in
+`r = q * q`, `q = p - 0.5`, evaluated by Horner. `Math.sqrt` and `Math.log` are not assumed to exist or to be
+float-correct, so this needs only multiply, divide and add. `p` is clamped to `Phi(-+3)` first: that saturates
+the axis at 2.9996 sigma instead of letting it diverge, and is the only bound the marker needs. Accuracy is
+4.1e-4 sigma in double precision and 8.6e-4 sigma, 0.015 bar points, in float32; cancellation near the clip
+also costs float32 evaluation up to 0.00125 sigma of monotonicity. The live marker is
+`50 + (50 / 3) * z * n / (n + 10)`. A percentile axis is steepest at the centre, a sigma axis is evenly
+sensitive. Order-dependent smoothing — slew caps, EMAs — is excluded: two identical tallies must render
+identically, whatever order the attacks arrived in.
+
+The internal state and journal retain each side's exact diagnostic delta, `100 * (hits / expected - 1)`,
+rounded half away from zero without weighting or a positive cap, beside the live badge value, that delta times
+the same side's own `n / (n + 10)`. `ui_model="smoothed_percent_option_v1"` renders the weighted figure live
+and the exact figure on the results screen, only when `ShowPercentages` is enabled; it defaults off.
 The hidden row has no reserved height, and a setting push toggles the existing live view in place. Hover/results
 retain exact hit and expected-hit totals regardless of that option. The engine binds `Math.abs`, `Math.min` and `Math.max` to integer functions (start-line
 probes `probe_abs=1 probe_min=74 probe_max=74`), so diagnostic percentages and swing magnitudes take their magnitude
 through the float-preserving `::XBro.abs`, and `tests/fixtures.nut` emulates the integer bindings so a
 native call cannot creep back in. Rounded zero and undefined
-ratios have neutral diagnostic tones; enemy tones reverse the player mapping. Only the live bar is weighted by
-evidence, `n / (n + 10)`; its emphasis is a separate linear warm-up completing at counted attack 10.
-The `MinAttacks` setting is removed. Results show the raw rarity at full emphasis.
+ratios have neutral diagnostic tones; enemy tones reverse the player mapping. Only the live surface is weighted by
+evidence, `n / (n + 10)`; emphasis is a separate linear warm-up completing at counted attack 10.
+The `MinAttacks` setting is removed. Results show the exact rarity at full emphasis.
+The marker's horizontal position carries a 250 ms CSS transition on the tactical screen only. Receipts read the
+inline style, which is the pushed target rather than an interpolated position, so the journal stays exact; the
+results bar does not animate because it is a final figure.
 
 Independent replay reconstructs expected hits and variance with float32 operations to match long-battle
-accumulation, while rarity is checked against a double-precision distribution. A `start` line without
+accumulation, while rarity and the mid-p tail are checked against a double-precision distribution. The axis is
+verified in three independent steps, reported in that order: the written `midp` against the replayed
+distribution, the written `z` against `probit` of the written `midp`, and the written `marker` against the bar
+geometry for the written `z`. Only the middle step carries a loose tolerance, 0.002 sigma or 0.03 bar points,
+which is what the runtime's approximation is worth against the true quantile; everything else keeps the
+existing tolerances, so an edit smaller than that still surfaces on the marker. A `start` line without
 `marker_model` replays the 0.4.0/0.4.1 schema-3 semantics (linear warm-up, damped results, the earlier
-verdict and sample wording); `marker_model="evidence_weight_v1"` selects the current ones. Percentages
+verdict and sample wording); `marker_model="evidence_weight_v1"` is the 0.4.2-0.4.4 percentile axis and
+`"probit_evidence_weight_v1"` the current sigma axis. The auditor derives `z` from the true inverse normal
+rather than replaying the runtime's polynomial, so a mistyped coefficient is a finding instead of a
+transcription shared by both sides. Percentages
 are always checked against the float-correct model, so a 0.4.1 journal still fails on the truncation defect.
 A checkpoint is recorded before it is judged, so a defective readout is one finding and the battle's end and
 pushes are still traced instead of degrading into missing-end findings. Presentation is checked against the
 validated runtime values to accommodate rounding ties. Legacy 0.4.1/0.4.2 schema 3 receipts report both
 percentages and colour classes; 0.4.3 `bar_only_v1` receipts reject those fields and report only track opacity
-and marker position. The current UI contract reports `badges="hidden"` or `badges="rendered"`; only rendered
-badges carry exact percentage and tone fields.
+and marker position; 0.4.4 `relative_percent_option_v1` journals keep the conditional badges but render the
+exact figure live. The current UI contract reports `badges="hidden"` or `badges="rendered"`; only rendered
+badges carry percentage and tone fields, weighted on the battle surface and exact on the results surface.
+`tests/audit_test.py` rewrites the emitted journal of a one-attack battle into each earlier contract, so every
+released model keeps replaying under its own semantics rather than being grandfathered in.
 Schema 2 retains its original replay path.
 
 The probability model remains `displayed_chance_v1`. The auditor verifies this calculation and separately

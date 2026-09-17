@@ -44,6 +44,14 @@
     border-radius: 0.1rem;
 }
 
+/* Glide between pushes so a single attack reads as a move, not a jump. Only the live
+   bar animates; the results bar is a final figure and simply appears at it. Receipts
+   report the inline style, which is the target, so the journal stays exact. */
+.tactical-screen .xbro-marker
+{
+    transition: left 250ms ease-out;
+}
+
 .tactical-screen .xbro-centre,
 .tactical-combat-result-screen .xbro-centre
 {

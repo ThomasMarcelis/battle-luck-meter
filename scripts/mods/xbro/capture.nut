@@ -129,15 +129,18 @@
     }
 };
 
-// Check every intermediate total, rarity, evidence weight and readout.
+// Check every intermediate total, both tails, the axis position and every readout. The
+// exact figures sit beside the smoothed ones so each remains independently checkable.
 ::XBro.checkpoint <- function( _event )
 {
     local s = this.summary(), b = this.Battle;
     this.log(_event, {attempts = b.attempts, results = b.results, excluded = b.excluded, errors = b.errors,
         attack = s.n, ours_n = s.ours.n, ours_hits = s.ours.hits, ours_expected = s.ours.expected, ours_variance = b.ours.sumPQ,
         theirs_n = s.theirs.n, theirs_hits = s.theirs.hits, theirs_expected = s.theirs.expected, theirs_variance = b.theirs.sumPQ,
-        rarity = s.rarity, weight = s.weight, marker = s.marker, emphasis = s.emphasis, swing = s.swing,
+        rarity = s.rarity, midp = s.midp, z = s.z, weight = s.weight, marker = s.marker, emphasis = s.emphasis, swing = s.swing,
         ours_percent = s.ours.percent, ours_tone = s.ours.tone, theirs_percent = s.theirs.percent, theirs_tone = s.theirs.tone,
+        ours_exact_percent = s.ours.exactPercent, ours_exact_tone = s.ours.exactTone,
+        theirs_exact_percent = s.theirs.exactPercent, theirs_exact_tone = s.theirs.exactTone,
         enabled = this.enabled(), show_percentages = this.showPercentages(), text = s.text});
 };
 

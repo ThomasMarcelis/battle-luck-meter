@@ -61,8 +61,9 @@ try
         check(page.len() == 2 && page[0].id == "Enabled" && page[1].id == "ShowPercentages", "visibility and percentages are configurable");
         local percentages = system.getPanel(X.ID).getSetting("ShowPercentages");
         check(percentages.getName() == "Show relative hit percentages"
-            && percentages.getDescription().find("raw") != null && percentages.getDescription().find("swing sharply") != null,
-            "percentage setting explains volatility");
+            && percentages.getDescription().find("scaled by how many attacks") != null
+            && percentages.getDescription().find("results screen shows them exactly") != null,
+            "percentage setting describes the weighting it actually applies");
         check(X.enabled() == true && !X.showPercentages() && writes == 0, "percentages default off without disk writes");
         system.updateSettingsFromJS({[X.ID] = {Enabled = {type = "bool", value = false}}});
         check(!X.enabled() && writes == 1 && ::Errors.len() == 0, "visibility persists outside a battle");
@@ -86,7 +87,7 @@ try
         system.importPersistentSettings();
         check(X.enabled() && !X.showPercentages() && !system.getPanel(X.ID).hasSetting("MinAttacks"), "old gate is not registered and new option defaults off");
         X.reset(); X.record("ours", 0.95, false);
-        check(X.state().ours_percent == "-100%" && near(X.state().marker, 50.0 - 45.0 / 11.0, 0.0001), "old threshold cannot hide first attack");
+        check(X.state().ours_percent == "-9%" && near(X.state().marker, 47.030373, 0.0002), "old threshold cannot hide first attack");
         check(writes == oldWrites && disk.ModSettings[X.ID].MinAttacks == 30, "import leaves stored settings untouched");
         disk.ModSettings = previous; X.reset();
     });
@@ -147,7 +148,7 @@ try
         check(updates == 2 && sent.len() == 1 && sent[0][0] == "xbroUpdate" && sent[0][1].theirs_percent == "—", "native update then push");
         X.begin();
         X.settle(X.price(skill(70), actor(1), actor(2), true), true);
-        check(sent.len() == 2 && sent[1][1].ours_percent == "+43%" && ::Errors.len() == 0, "each recorded attack pushes");
+        check(sent.len() == 2 && sent[1][1].ours_percent == "+4%" && ::Errors.len() == 0, "each recorded attack pushes the weighted live badge");
     });
 
     test("results_hook_preserves_native_data_for_every_outcome_and_failures", function() {
