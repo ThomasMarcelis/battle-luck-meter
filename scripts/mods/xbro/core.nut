@@ -1,5 +1,5 @@
 ::XBro <- {
-    ID = "mod_xbro", Name = "xBro", Version = "0.4.5",
+    ID = "mod_xbro", Name = "xBro", Version = "0.4.6",
     Battles = 0, Battle = null, Sequence = 0, Pushes = 0
 };
 
@@ -67,7 +67,7 @@
 {
     this.Battles++;
     this.reset();
-    this.log("start", {version = this.Version, model = "displayed_chance_v1",
+    this.log("start", {version = this.Version, model = "displayed_chance_v2",
         stats_model = "favorable_poisson_binomial_v1", marker_model = "probit_evidence_weight_v1", ui_model = "smoothed_percent_option_v1",
         ui_transport = "msu_connection_v1", enabled = this.enabled(), show_percentages = this.showPercentages(),
         // Constant-only probes distinguish engine math bindings from local test doubles.

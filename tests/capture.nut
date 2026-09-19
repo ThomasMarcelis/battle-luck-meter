@@ -73,7 +73,9 @@ cases.lucky_trait_reroll_lowers_the_priced_chance <- function()
     check(near(trial(skill(50), actor(2), lucky).p, 0.475, 1e-6), "p - p * 0.1 * (1 - p)");
     check(near(trial(skill(100), actor(2), lucky).p, 1.0, 1e-6) && near(trial(skill(50), actor(2), actor(1)).p, 0.5, 1e-6), "no reroll, no change");
     world(null, 0);
-    check(near(trial(skill(35), actor(2), lucky).p, 0.30 - 0.30 * 0.1 * 0.70, 1e-6), "reroll applies after the beginner shift");
+    check(near(trial(skill(35), actor(2), lucky).p, 0.30 * (0.90 + 0.10 * 0.35), 1e-6), "beginner shift applies only to the first roll");
+    local luckyFoe = actor(2); luckyFoe.reroll = 10;
+    check(near(trial(skill(95), actor(1), luckyFoe).p, 0.995, 1e-6), "player bonus does not make the Lucky reroll certain");
 };
 
 cases.price_then_settle_records_the_native_outcome <- function()

@@ -5,7 +5,7 @@ cases.native_outcome_and_math_bindings_are_logged_without_changing_payloads <- f
     world(); settings(); X.begin();
     local start = fields(::Logs.top());
     check(start.probe_abs == "1" && start.probe_min == "74" && start.probe_max == "74", "integer engine bindings are journaled");
-    check(start.version == X.Version && start.marker_model == "probit_evidence_weight_v1"
+    check(start.version == X.Version && start.model == "displayed_chance_v2" && start.marker_model == "probit_evidence_weight_v1"
         && start.ui_model == "smoothed_percent_option_v1" && start.show_percentages == "0", "start identifies the live UI contracts and default");
     X.finish();
     local native = {result = "win", title = "Victory", subTitle = "The enemy was destroyed in 4 rounds"};
@@ -50,9 +50,9 @@ cases.pricing_inputs_retain_fractional_chance_difficulty_and_reroll <- function(
     X.settle(X.price(skill(50.5), actor(2), lucky, true), true);
     local e = events("attempt")[0];
     check(e.chance == "50.5" && e.difficulty == "0" && e.shift == "-5" && e.by_controlled == "0" && e.on_controlled == "1", "pricing inputs");
-    check(e.reroll == "10" && near(e.initial_p.tofloat(), 0.455, 1e-6) && near(e.p.tofloat(), 0.4302025, 1e-6), "current model completely explained");
+    check(e.reroll == "10" && near(e.initial_p.tofloat(), 0.455, 1e-6) && near(e.p.tofloat(), 0.4324775, 1e-6), "unshifted Lucky reroll completely explained");
     local state = events("state")[0];
-    check(near(state.theirs_variance.tofloat(), 0.4302025 * (1.0 - 0.4302025), 1e-6), "variance logged");
+    check(near(state.theirs_variance.tofloat(), 0.4324775 * (1.0 - 0.4324775), 1e-6), "variance logged");
 };
 
 cases.alliance_evidence_does_not_change_the_current_sample <- function()

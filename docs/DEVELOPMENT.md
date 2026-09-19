@@ -88,10 +88,12 @@ badges carry percentage and tone fields, weighted on the battle surface and exac
 released model keeps replaying under its own semantics rather than being grandfathered in.
 Schema 2 retains its original replay path.
 
-The probability model remains `displayed_chance_v1`. The auditor verifies this calculation and separately
-compares the ordinary integer-die reference (including the unshifted Lucky reroll). Discrepancies fail the
-audit instead of silently changing gameplay presentation. It cannot inspect the native local threshold,
-future dice or unhooked/mod-replaced attack paths. Rarity assumes independent trials at the recorded odds; actual battle length and later odds depend on outcomes.
+The current probability model is `displayed_chance_v2`: Beginner difficulty shifts the first hit check, while
+a Lucky target's fresh reroll uses the unshifted displayed chance, matching the native attack routine's order.
+The auditor retains `displayed_chance_v1` to replay older journals and separately compares the ordinary
+integer-die reference. Discrepancies fail the audit instead of silently changing gameplay presentation. It
+cannot inspect the native local threshold, future dice or unhooked/mod-replaced attack paths. Rarity assumes
+independent trials at the recorded odds; actual battle length and later odds depend on outcomes.
 
 Both battle and results surfaces publish correlated bar state. Results also report their rendered rarity, side totals, net swing and sample context,
 including every replacement view when the native list reloads. A suppressed disabled result is acknowledged.

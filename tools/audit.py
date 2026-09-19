@@ -222,7 +222,10 @@ def number(e, key, integer=False):
     return value
 
 
-def pricing(e):
+PRICING_MODELS = {'displayed_chance_v1', 'displayed_chance_v2'}
+
+
+def pricing(e, model='displayed_chance_v1'):
     """Derive eligibility and both probability interpretations from observed inputs.
 
     The reference probability assumes ordinary clamped attackEntity thresholds;
@@ -252,11 +255,14 @@ def pricing(e):
     chance, reroll = number(e, 'chance'), number(e, 'reroll')
     if not 0 <= reroll <= 100:
         raise ValueError('reroll outside 0..100')
+    if model not in PRICING_MODELS:
+        raise ValueError('unsupported probability model')
     shift = 0
     if number(e, 'difficulty', True) == 0:
         shift = 5 if flag('by_controlled') else -5 if flag('on_controlled') else 0
     initial = min(1.0, max(0.0, (chance + shift) / 100.0))
-    p = initial - initial * (reroll / 100.0) * (1.0 - initial)
+    second = initial if model == 'displayed_chance_v1' else min(1.0, max(0.0, chance / 100.0))
+    p = initial - initial * (reroll / 100.0) * (1.0 - second)
     for key, want in [('shift', shift), ('shifted', chance+shift), ('initial_p', initial), ('p', p)]:
         if abs(number(e, key)-want) > 0.000002:
             raise ValueError(f'{key}={e[key]}, derived {want:.9g}')
@@ -299,11 +305,11 @@ def float32(value):
 # A start line without marker_model is a 0.4.0/0.4.1 journal: linear warm-up that reached
 # the raw tail at attack 10, results retaining that damping, and the old verdict/sample
 # wording. 'evidence_weight_v1' is the 0.4.2-0.4.4 percentile axis; 'probit_evidence_weight_v1'
-# is the 0.4.5 standard-deviation axis reading the mid-p tail.
+# is the 0.4.5+ standard-deviation axis reading the mid-p tail.
 MARKER_MODELS = {None: 'linear', 'evidence_weight_v1': 'percentile', 'probit_evidence_weight_v1': 'probit'}
 UI_MODELS = {None: 'always', 'bar_only_v1': 'never', 'relative_percent_option_v1': 'setting',
              'smoothed_percent_option_v1': 'setting'}
-# Only 0.4.5 weights the live badges; every earlier contract rendered the exact figure live.
+# Versions 0.4.5 and later weight the live badges; every earlier contract rendered the exact figure live.
 Model = namedtuple('Model', 'legacy axis smoothed badges')
 DEFAULT_MODEL = Model(False, 'percentile', False, 'always')
 LEGACY_INTERPRETATION = ("Compared with battles with the same hit chances; equally lucky or unlucky outcomes count too. "
@@ -526,7 +532,7 @@ def audit_journal(text, show_attacks=False):
                 raise ValueError('negative battle ID')
             b = battles.setdefault(bid, {'start': None, 'end': None, 'closed': False, 'attempts': {}, 'results': set(), 'attacks': [],
                                        'mass': [1.0], 'excluded': 0, 'enabled': None, 'minimum': None, 'states': 0, 'needs_state': False, 'needs_push': False,
-                                       'presentation': None, 'model': DEFAULT_MODEL, 'show_percentages': None})
+                                       'presentation': None, 'model': DEFAULT_MODEL, 'pricing_model': 'displayed_chance_v1', 'show_percentages': None})
             event = e['event']
             if e['channel'] == 'xBro' and b['needs_push'] and event != 'push':
                 errors.append(f'battle {bid}: missing push after state')
@@ -537,7 +543,7 @@ def audit_journal(text, show_attacks=False):
             if event == 'start':
                 if b['start'] or b['attempts']:
                     raise ValueError('duplicate/late battle start')
-                if e['model'] != 'displayed_chance_v1':
+                if e['model'] not in PRICING_MODELS:
                     raise ValueError('unsupported probability model')
                 if e.get('marker_model') not in MARKER_MODELS:
                     raise ValueError('unsupported marker model')
@@ -546,6 +552,7 @@ def audit_journal(text, show_attacks=False):
                 axis = MARKER_MODELS[e.get('marker_model')]
                 b['model'] = Model(axis == 'linear', axis, e.get('ui_model') == 'smoothed_percent_option_v1',
                                    UI_MODELS[e.get('ui_model')])
+                b['pricing_model'] = e['model']
                 b['start'] = e
             if event in ('start', 'settings'):
                 b['enabled'], b['minimum'] = e['enabled'], 10 if v3 else number(e, 'min_attacks', True)
@@ -569,7 +576,7 @@ def audit_journal(text, show_attacks=False):
                 verify_fields(e, {'enabled': b['enabled']} if v3 else {'enabled': b['enabled'], 'min_attacks': b['minimum']})
                 if e['reason'] == 'capture_error':
                     raise ValueError('capture failed')
-                reason, p, reference = pricing(e)
+                reason, p, reference = pricing(e, b['pricing_model'])
                 if e['reason'] != reason:
                     raise ValueError(f'exclusion: wrote {e["reason"]}, derived {reason}')
                 if e.get('target_present') == '1' and ('on_id' not in e or 'on' not in e):

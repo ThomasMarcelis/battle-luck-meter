@@ -119,6 +119,12 @@ X.begin(); X.push(); X.tooltip(); X.finish(); closeBattle();
 X.begin(); play([95], [0], true); X.tooltip(); X.finish(); closeBattle();
 // A fractional percentage (1/0.61 = +63.9%) that an integer abs would truncate to +63%.
 X.begin(); play([61], [1], true); X.tooltip(); X.finish(); closeBattle();
+// Beginner modifies only the first die; Lucky rerolls against the unshifted 95% chance.
+::World.Assets.getCombatDifficulty = @() 0;
+X.begin();
+local luckyFoe = actor(2); luckyFoe.reroll = 10;
+X.settle(X.price(skill(95), actor(1), luckyFoe, true), true);
+X.tooltip(); X.finish(); closeBattle();
 // Settings outside a closed battle must not require an unavailable topbar receipt.
 ::Tactical.TopbarRoundInformation = null;
 values.Enabled = false;

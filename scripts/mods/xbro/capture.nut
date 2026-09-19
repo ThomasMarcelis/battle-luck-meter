@@ -61,9 +61,10 @@
     e.initial_p <- ::Math.minf(1.0, ::Math.maxf(0.0, e.shifted / 100.0));
     e.reroll <- _target.getCurrentProperties().RerollDefenseChance;
     local p = e.initial_p, reroll = e.reroll / 100.0;
-    // Preserve the meter's current model. The offline audit also checks the source-
-    // derived integer threshold and unshifted reroll, and reports any discrepancy.
-    if (reroll > 0.0) p = p - p * reroll * (1.0 - p);
+    // Beginner difficulty adjusts only the first die. Lucky's fresh reroll is compared
+    // with the original displayed chance, matching the native attack routine's order.
+    local rerollP = ::Math.minf(1.0, ::Math.maxf(0.0, e.chance / 100.0));
+    if (reroll > 0.0) p = p - p * reroll * (1.0 - rerollP);
     e.p <- p; e.reason = "counted";
     return {side = e.side, p = p};
 };

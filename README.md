@@ -114,13 +114,13 @@ were absent from a live log; the new transport still needs live confirmation.
 - The live bar reads the same distribution more finely than the verdict does, so the two can disagree by a
   little: a battle whose inclusive tails both exceed 50% reads `Even` while the bar sits slightly off centre.
   The verdict is the exact answer; the bar is the trend.
-- The current meter prices fractional chances directly and applies beginner difficulty to both Lucky hit
-  checks. The auditor separately compares integer-die thresholds and an unshifted reroll, flags discrepancies,
-  and exits `1`. This release preserves the existing attack-pricing model.
+- The current meter prices fractional chances directly. On Beginner difficulty, the ±5 adjustment applies to
+  the first hit check only; a Lucky target's fresh reroll uses the original displayed chance, matching the
+  native attack routine's order. The auditor still flags fractional/integer-threshold discrepancies.
 - Company-versus-allied-faction attacks currently count as opposing-side trials. The journal records
   alliance and the auditor flags these as model discrepancies.
 - The hook cannot observe the native local roll/threshold, hidden modifiers, or attacks that bypass it.
   DOM receipts verify assigned values, not visual fit. More logging cannot establish those facts by itself.
-- The v0.4.5 live meter has not yet been confirmed in-game. Its mathematics, rendering and journal contract are covered by
-  the offline suites and by replay of v0.4.1-v0.4.4 journals, but the probit axis and marker transition still need a
-  native play session and a ZIP removal/reinstall check before release.
+- The v0.4.6 Lucky/Beginner correction has not yet been confirmed in-game. Its mathematics, rendering and journal
+  contract are covered by the offline suites and by replay of v0.4.1-v0.4.5 journals, but the corrected edge case
+  still needs a native play session and a ZIP removal/reinstall check before release.

@@ -57,12 +57,15 @@ class AuditTests(unittest.TestCase):
         self.assertIn('battle 3:', output)
         self.assertIn('battle 4:', output)
         self.assertIn('You +88%', output)
-        self.assertTrue(any('event=start ' in line and 'version="0.4.5"' in line and
+        self.assertTrue(any('event=start ' in line and 'version="0.4.6"' in line and
+                            'model="displayed_chance_v2"' in line and
                             'ui_model="smoothed_percent_option_v1"' in line and 'show_percentages=0' in line
                             for line in self.lines))
         entries, errors = audit.journal(self.text)
         self.assertFalse(errors)
         self.assertTrue(any(e.get('on') == 'A" p=0 x="<>&%\n\\' for e in entries))
+        beginner_lucky = next(e for e in entries if e.get('event') == 'attempt' and e.get('battle') == '9')
+        self.assertAlmostEqual(float(beginner_lucky['p']), .995)
 
     def test_allied_cross_faction_attack_is_a_model_discrepancy(self):
         status, output = self.replay(self.change('attempt', 'allied', '1'))
@@ -177,7 +180,7 @@ class AuditTests(unittest.TestCase):
     def battle(self, bid):
         return [s for s in self.lines if f' battle={bid} ' in s]
 
-    # Rewrite the emitted 0.4.5 journal of a one-counted-attack battle into an earlier
+    # Rewrite the emitted 0.4.6 journal of a one-counted-attack battle into an earlier
     # released UI contract, so every shipped model keeps replaying under its own semantics.
     EXACT_FIELDS = ('ours_exact_percent', 'ours_exact_tone', 'theirs_exact_percent', 'theirs_exact_tone')
 
@@ -197,6 +200,7 @@ class AuditTests(unittest.TestCase):
         live, out = 50 + (rarity - 50) * weight, []
         for line in lines:
             line = re.sub(r'version="[^"]*"', f'version="{version}"', line)
+            line = line.replace(' model="displayed_chance_v2"', ' model="displayed_chance_v1"')
             line = line.replace(' marker_model="probit_evidence_weight_v1"', models[0])
             line = line.replace(' ui_model="smoothed_percent_option_v1"', models[1])
             line = re.sub(r' (' + '|'.join(self.EXACT_FIELDS) + r'|midp|z)=("[^"]*"|\S+)', '', line)
@@ -257,8 +261,15 @@ class AuditTests(unittest.TestCase):
         return self.renumber(self.rebase(lines, '0.4.4',
             (' marker_model="evidence_weight_v1"', ' ui_model="relative_percent_option_v1"'), 1 / 11))
 
+    def probit_0_4_5(self, lines):
+        """0.4.5: current UI semantics with the original shifted-reroll probability model."""
+        return self.renumber([line.replace('version="0.4.6"', 'version="0.4.5"')
+                              .replace('model="displayed_chance_v2"', 'model="displayed_chance_v1"')
+                              for line in lines])
+
     def test_current_ui_receipts_are_conditional_and_reject_badge_tampering(self):
-        self.assertTrue(any('event=start ' in line and 'version="0.4.5"' in line and
+        self.assertTrue(any('event=start ' in line and 'version="0.4.6"' in line and
+                            'model="displayed_chance_v2"' in line and
                             'ui_model="smoothed_percent_option_v1"' in line for line in self.lines))
         rendered = [line for line in self.lines if line.startswith('[xBroUI]') and 'status="rendered"' in line]
         hidden = [line for line in rendered if 'badges="hidden"' in line]
@@ -287,10 +298,11 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(status, 1, output)
         self.assertIn('ours_tone', output)
 
-    def test_legacy_0_4_1_through_0_4_4_ui_contracts_still_replay(self):
+    def test_legacy_0_4_1_through_0_4_5_contracts_still_replay(self):
         emitted = self.battle(7)
         variants = [('0.4.1', self.legacy(emitted)), ('0.4.2', self.percentage_visible_0_4_2(emitted)),
-                    ('0.4.3', self.bar_only_0_4_3(emitted)), ('0.4.4', self.percent_option_0_4_4(emitted))]
+                    ('0.4.3', self.bar_only_0_4_3(emitted)), ('0.4.4', self.percent_option_0_4_4(emitted)),
+                    ('0.4.5', self.probit_0_4_5(emitted))]
         for version, lines in variants:
             with self.subTest(version=version):
                 status, output = self.replay(lines)
@@ -426,17 +438,22 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(status, 1, output)
         self.assertIn('mixed schema', output)
 
-    def test_pricing_reference_exposes_existing_model_discrepancies(self):
+    def test_pricing_replays_old_rerolls_and_current_rerolls_match_the_native_order(self):
         e = {'enabled':'1', 'target_present':'1', 'alive':'1', 'attackable':'1', 'uses_hitchance':'1',
              'able_to_die':'1', 'by_faction':'2', 'on_faction':'1', 'player_faction':'1', 'side':'theirs',
              'ranged':'0', 'difficulty':'0', 'by_controlled':'0', 'on_controlled':'1', 'chance':'50',
              'shift':'-5', 'shifted':'45', 'initial_p':'.45', 'reroll':'10', 'p':'.42525'}
-        reason, p, reference = audit.pricing(e)
+        reason, p, reference = audit.pricing(e, 'displayed_chance_v1')
         self.assertEqual(reason, 'counted')
         self.assertAlmostEqual(p, .42525)
         self.assertAlmostEqual(reference, .4275)
+        e['p'] = '.4275'
+        reason, p, reference = audit.pricing(e, 'displayed_chance_v2')
+        self.assertEqual(reason, 'counted')
+        self.assertAlmostEqual(p, .4275)
+        self.assertAlmostEqual(reference, .4275)
         e.update(difficulty='1', chance='74.5', shift='0', shifted='74.5', initial_p='.745', reroll='0', p='.745')
-        _, p, reference = audit.pricing(e)
+        _, p, reference = audit.pricing(e, 'displayed_chance_v2')
         self.assertAlmostEqual(p, .745)
         self.assertAlmostEqual(reference, .74)
 
