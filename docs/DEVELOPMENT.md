@@ -5,17 +5,17 @@ and reports observed DOM values; receipts never update game or meter state.
 
 | File | Responsibility |
 | --- | --- |
-| `scripts/!mods_preload/mod_xbro.nut` | Registration, attack/battle/topbar/results hooks, delivery status |
-| `scripts/mods/xbro/core.nut` | Namespace, per-battle counters, session sequence, safe journal encoding |
-| `scripts/mods/xbro/capture.nut` | Eligibility/pricing inputs, pre-call attempts, linked results, calculation checkpoints |
-| `scripts/mods/xbro/stats.nut` | Incremental favorable-outcome distribution, rarity, mid-p sigma axis, evidence weighting and hit percentages |
-| `scripts/mods/xbro/ui.nut` | Settings history, tooltips, final result payload, correlated pushes |
-| `ui/mods/xbro/xbro.js`, `xbro.css` | Native bar and scrolling result summary, DOM receipts, stale push rejection, teardown |
-| `tools/audit.py` | Strict journal replay and reference-pricing comparison; legacy arithmetic replay |
+| `scripts/!mods_preload/mod_battle_luck_meter.nut` | Registration, attack/battle/topbar/results hooks, delivery status |
+| `scripts/mods/battle_luck_meter/core.nut` | Namespace, per-battle counters, session sequence, safe journal encoding |
+| `scripts/mods/battle_luck_meter/capture.nut` | Eligibility/pricing inputs, pre-call attempts, linked results, calculation checkpoints |
+| `scripts/mods/battle_luck_meter/stats.nut` | Incremental favorable-outcome distribution, rarity, mid-p sigma axis, evidence weighting and hit percentages |
+| `scripts/mods/battle_luck_meter/ui.nut` | Settings history, tooltips, final result payload, correlated pushes |
+| `ui/mods/battle_luck_meter/battle_luck_meter.js`, `battle_luck_meter.css` | Native bar and scrolling result summary, DOM receipts, stale push rejection, teardown |
+| `tools/audit.py` | Strict journal replay and reference-pricing comparison; schema-2 arithmetic replay |
 
 ## Evidence contract
 
-The native results `queryData` payload carries `xbroLuck` only for a completed battle. The Statistics panel
+The native results `queryData` payload carries `battleLuckMeterLuck` only for a completed battle. The Statistics panel
 appends the summary after its cards, using the same calculation and a concise form of the tooltip's side totals.
 The verdict and the overview bar show the exact rarity at full emphasis, and enabled badges show the exact
 unweighted percentages, without the live bar's sigma axis or evidence weighting: only the live surface is
@@ -38,7 +38,7 @@ integer boundaries. Updates cost O(n) time and battle state uses O(n) space; no 
 The same read also takes the mid-p lower tail, mass strictly below the observed count plus half of the count's
 own mass. The two sides sum to exactly one, so the bar's sign comes from a single number and a count sitting at
 the median is exactly neutral, instead of the percentile axis's pinning at 50 followed by a jump of a whole
-outcome. `::XBro.probit` converts that tail to standard deviations with a central rational approximation in
+outcome. `::BattleLuckMeter.probit` converts that tail to standard deviations with a central rational approximation in
 `r = q * q`, `q = p - 0.5`, evaluated by Horner. `Math.sqrt` and `Math.log` are not assumed to exist or to be
 float-correct, so this needs only multiply, divide and add. `p` is clamped to `Phi(-+3)` first: that saturates
 the axis at 2.9996 sigma instead of letting it diverge, and is the only bound the marker needs. Accuracy is
@@ -55,7 +55,7 @@ and the exact figure on the results screen, only when `ShowPercentages` is enabl
 The hidden row has no reserved height, and a setting push toggles the existing live view in place. Hover/results
 retain exact hit and expected-hit totals regardless of that option. The engine binds `Math.abs`, `Math.min` and `Math.max` to integer functions (start-line
 probes `probe_abs=1 probe_min=74 probe_max=74`), so diagnostic percentages and swing magnitudes take their magnitude
-through the float-preserving `::XBro.abs`, and `tests/fixtures.nut` emulates the integer bindings so a
+through the float-preserving `::BattleLuckMeter.abs`, and `tests/fixtures.nut` emulates the integer bindings so a
 native call cannot creep back in. Rounded zero and undefined
 ratios have neutral diagnostic tones; enemy tones reverse the player mapping. Only the live surface is weighted by
 evidence, `n / (n + 10)`; emphasis is a separate linear warm-up completing at counted attack 10.
@@ -99,7 +99,7 @@ Both battle and results surfaces publish correlated bar state. Results also repo
 including every replacement view when the native list reloads. A suppressed disabled result is acknowledged.
 An ended, closed battle without a results payload is incomplete evidence.
 `start` records version, all four model IDs, receipt transport, engine math probes and both settings; `settings` records changes; `end` records totals; `close` records native
-screen exit, including abandoned battles. `push` identifies intended state. JS writes `[xBroUI]` observations
+screen exit, including abandoned battles. `push` identifies intended state. JS writes `[BattleLuckMeterUI]` observations
 through MSU's existing session connection to Squirrel `logInfo`, with its own monotonic sequence. Native screen teardown disconnects the
 screen's Squirrel handle before destroying DOM; MSU's connection remains available. Origin battle/push IDs
 survive delayed receipts. The previous console transport produced no receipts in a live battle; confirm the
@@ -123,7 +123,7 @@ python3 tools/package.py
 ```
 
 Checks cover both Squirrel versions, settings/hooks, deterministic journal replay, exclusions, nested/stale
-results, broken logging/UI, malformed evidence, altered pricing/calculations/conditional DOM receipts, legacy UI contracts, Node behavior and
+results, broken logging/UI, malformed evidence, altered pricing/calculations/conditional DOM receipts, pre-release UI model contracts, Node behavior and
 ES3 source syntax loading. The Python audit tests consume `tests/sample.nut` output from the real Squirrel
 emitter. Diagnostic captures, source references, reports and generated packages stay in ignored paths.
 

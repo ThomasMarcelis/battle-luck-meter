@@ -21,8 +21,8 @@ def package(destination, sources):
           f'SHA256 {sha256(destination.read_bytes()).hexdigest()}')
 
 
-version = re.search(r'Version = "([0-9.]+)"', (ROOT / 'scripts/mods/xbro/core.nut').read_text())[1]
-paths = [*ROOT.glob('scripts/mods/xbro/*.nut'),
-         *(ROOT / name for name in ('scripts/!mods_preload/mod_xbro.nut', 'ui/mods/xbro/xbro.js', 'ui/mods/xbro/xbro.css',
+version = re.search(r'Version = "([0-9.]+)"', (ROOT / 'scripts/mods/battle_luck_meter/core.nut').read_text())[1]
+paths = [*ROOT.glob('scripts/mods/battle_luck_meter/*.nut'),
+         *(ROOT / name for name in ('scripts/!mods_preload/mod_battle_luck_meter.nut', 'ui/mods/battle_luck_meter/battle_luck_meter.js', 'ui/mods/battle_luck_meter/battle_luck_meter.css',
                                     'LICENSE', 'README.md', 'THIRD_PARTY.md', 'docs/DEVELOPMENT.md'))]
-package(ROOT / 'dist' / f'mod_xbro-{version}.zip', {path.relative_to(ROOT).as_posix(): path for path in paths})
+package(ROOT / 'dist' / f'mod_battle_luck_meter-{version}.zip', {path.relative_to(ROOT).as_posix(): path for path in paths})

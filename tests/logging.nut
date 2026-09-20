@@ -1,4 +1,4 @@
-local X = ::XBro, cases = {};
+local X = ::BattleLuckMeter, cases = {};
 
 cases.native_outcome_and_math_bindings_are_logged_without_changing_payloads <- function()
 {
@@ -70,7 +70,7 @@ cases.alliance_evidence_does_not_change_the_current_sample <- function()
 cases.ui_receipts_preserve_origin_after_reset_and_failures_are_contained <- function()
 {
     world(); settings(); X.begin();
-    local line = "[xBroUI] schema=3 ui_seq=8 battle=" + X.Battle.id + " event=ui status=\"destroyed\"";
+    local line = "[BattleLuckMeterUI] schema=3 ui_seq=8 battle=" + X.Battle.id + " event=ui status=\"destroyed\"";
     X.begin(); local seq = X.Sequence;
     X.uiReceipt(line);
     check(::Logs.top() == line && X.Sequence == seq && X.Battle.ours.n == 0, "late receipt keeps its browser sequence and battle");

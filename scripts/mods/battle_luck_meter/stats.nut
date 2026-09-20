@@ -1,4 +1,4 @@
-::XBro.record <- function( _side, _p, _hit )
+::BattleLuckMeter.record <- function( _side, _p, _hit )
 {
     local side = this.Battle[_side];
     side.n++;
@@ -18,21 +18,21 @@
 // The bar is drawn on a standard-deviation axis: +-3 sigma spans the track, so one
 // attack is worth the same number of bar points wherever the marker currently sits.
 // A percentile axis is steepest at the centre, which is what made the bar lurch.
-::XBro.SIGMA_SCALE <- 50.0 / 3.0;
+::BattleLuckMeter.SIGMA_SCALE <- 50.0 / 3.0;
 // Phi(-3): clipping the tail here saturates the axis instead of letting it diverge.
-::XBro.PROBIT_CLIP <- 0.0013498980316301035;
+::BattleLuckMeter.PROBIT_CLIP <- 0.0013498980316301035;
 // Central rational approximation of the inverse normal CDF in r = q * q, q = p - 0.5.
 // A survey of 98 decompiled vanilla scripts found Math.minf, Math.maxf, Math.pow, Math.abs
 // and Math.floor in use and no call to Math.sqrt or Math.log, so neither is assumed to
 // exist or to be float-correct; this needs only multiply, divide and add. Accurate to
 // 4.1e-4 sigma in double precision and 8.6e-4 sigma (0.015 bar points) in float32 over
 // the clipped range, which is the whole axis.
-::XBro.PROBIT_P <- [2.5068461679497895, -8.049205477894898, -46.13605351033661, 181.32674632352655,
+::BattleLuckMeter.PROBIT_P <- [2.5068461679497895, -8.049205477894898, -46.13605351033661, 181.32674632352655,
     1379.0058299809375, -17362.439304595126, 74763.50954557075, -153253.224706505, 146069.42432111388];
-::XBro.PROBIT_Q <- [-4.229953084833044, -18.34139827806061, 155.92417471435067, -473.76692313678984,
+::BattleLuckMeter.PROBIT_Q <- [-4.229953084833044, -18.34139827806061, 155.92417471435067, -473.76692313678984,
     885.3867956273516, -5622.899296548299, 29074.574190289055, -42454.28580171358];
 
-::XBro.probit <- function( _p )
+::BattleLuckMeter.probit <- function( _p )
 {
     local p = ::Math.minf(1.0 - this.PROBIT_CLIP, ::Math.maxf(this.PROBIT_CLIP, _p));
     local q = p - 0.5, r = q * q, num = 0.0, den = 0.0;
@@ -42,7 +42,7 @@
 };
 
 // Round half away from zero on the float, then colour from the player's point of view.
-::XBro.readout <- function( _relative, _ours )
+::BattleLuckMeter.readout <- function( _relative, _ours )
 {
     local change = ::Math.floor(this.abs(_relative) + 0.5).tointeger();
     if (_relative < 0.0) change = -change;
@@ -50,7 +50,7 @@
         tone = change == 0 ? "neutral" : (change > 0) == _ours ? "good" : "bad"};
 };
 
-::XBro.sideSummary <- function( _side, _ours )
+::BattleLuckMeter.sideSummary <- function( _side, _ours )
 {
     local blank = {percent = "—", tone = "neutral"};
     local exact = blank, shown = blank;
@@ -68,7 +68,7 @@
         exactPercent = exact.percent, exactTone = exact.tone};
 };
 
-::XBro.summary <- function()
+::BattleLuckMeter.summary <- function()
 {
     local ours = this.sideSummary(this.Battle.ours, true), theirs = this.sideSummary(this.Battle.theirs, false);
     local n = ours.n + theirs.n, observed = ours.hits + theirs.n - theirs.hits;

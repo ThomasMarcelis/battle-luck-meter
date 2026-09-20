@@ -3,7 +3,7 @@
 ::Math <- {floor = floor, ceil = ceil, pow = pow, round = @(v) floor(v + 0.5), abs = @(v) v.tointeger() < 0 ? -v.tointeger() : v.tointeger(),
     max = @(a, b) a.tointeger() > b.tointeger() ? a.tointeger() : b.tointeger(), min = @(a, b) a.tointeger() < b.tointeger() ? a.tointeger() : b.tointeger(),
     maxf = @(a, b) a > b ? a : b, minf = @(a, b) a < b ? a : b,
-    rand = function( ... ) { throw "Math.rand consumed by xBro"; }};
+    rand = function( ... ) { throw "Math.rand consumed by Battle Luck Meter"; }};
 ::Errors <- [];
 ::logError <- function( _text ) { ::Errors.push(_text); };
 ::Logs <- [];
@@ -29,12 +29,12 @@ function fields( _line )
     return out;
 }
 
-// Settings double: XBro reads both presentation settings at use time.
+// Settings double: BattleLuckMeter reads both presentation settings at use time.
 function settings( _values = null )
 {
     local values = {Enabled = true, ShowPercentages = false};
     if (_values != null) foreach (key, value in _values) values[key] = value;
-    ::XBro.Mod <- {ModSettings = {getSetting = function( _id ) { local v = values[_id]; return {getValue = @() v}; }}};
+    ::BattleLuckMeter.Mod <- {ModSettings = {getSetting = function( _id ) { local v = values[_id]; return {getValue = @() v}; }}};
     return values;
 }
 
@@ -73,5 +73,5 @@ function skill( _chance, _ranged = false, _projectile = false )
 // Feed one side a list of (chance, hit) pairs.
 function feed( _side, _chances, _hits )
 {
-    foreach (i, chance in _chances) ::XBro.record(_side, chance / 100.0, _hits[i] == 1);
+    foreach (i, chance in _chances) ::BattleLuckMeter.record(_side, chance / 100.0, _hits[i] == 1);
 }

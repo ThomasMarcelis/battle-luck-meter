@@ -1,6 +1,6 @@
-# xBro repository instructions
+# Battle Luck Meter repository instructions
 
-xBro is a small, solo-maintained native Battle Brothers mod. The product owner decides behavior and publication; the supervisor escalates real ambiguity; the implementing agent owns implementation judgment within the settled scope.
+Battle Luck Meter is a small, solo-maintained native Battle Brothers mod. The product owner decides behavior and publication; the supervisor escalates real ambiguity; the implementing agent owns implementation judgment within the settled scope.
 
 ## Product boundary
 
@@ -12,12 +12,12 @@ xBro is a small, solo-maintained native Battle Brothers mod. The product owner d
 
 ## Layout and toolchain
 
-- Runtime Squirrel lives under `scripts/mods/xbro/`; the preload is `scripts/!mods_preload/mod_xbro.nut`; presentation is under `ui/mods/xbro/`. Technical ID and ZIP prefix are `mod_xbro`.
+- Runtime Squirrel lives under `scripts/mods/battle_luck_meter/`; the preload is `scripts/!mods_preload/mod_battle_luck_meter.nut`; presentation is under `ui/mods/battle_luck_meter/`. Technical ID and ZIP prefix are `mod_battle_luck_meter`.
 - The preload includes `core.nut`, registers with `::Hooks.register(ID, Version, Name)`, calls `.require("mod_msu >= 1.9.0", "mod_modern_hooks >= 0.6.0")`, and does all other includes, MSU `Class.Mod` creation, settings registration, `::Hooks.registerLateJS`/`registerCSS`, and `.hook("scripts/...", function(q) { q.method = @(__original) function(...) { ... } })` inside `.queue(">mod_msu", ...)`. Wrap hook bodies in try/catch and `::logError` so a failure never breaks the native path.
 - Settings go through `Mod.ModSettings.addPage(...)` with `addBooleanSetting` / `addRangeSetting`; read them with `getSetting(id).getValue()`.
-- Game UI is Chromium 48 with jQuery. JavaScript is ES3 only: `var`, `function`, no arrow functions, `let`/`const`, template literals, or `Array.prototype.find`. Squirrel→JS is `JSHandle.asyncCall` with no return value; push state outward from Squirrel. Use native classes, fonts, and `coui://gfx/` assets; prefix all CSS classes and DOM ids with `xbro-`.
+- Game UI is Chromium 48 with jQuery. JavaScript is ES3 only: `var`, `function`, no arrow functions, `let`/`const`, template literals, or `Array.prototype.find`. Squirrel→JS is `JSHandle.asyncCall` with no return value; push state outward from Squirrel. Use native classes, fonts, and `coui://gfx/` assets; prefix all CSS classes and DOM ids with `battle-luck-meter-`.
 - The game runs Squirrel 3.0.4 with 32-bit integers and floats. Ignored `.tools/sq` (3.2) and `.tools/sq30` (3.0.7) are the local runners; both use 64-bit integers, so overflow is not caught locally. 3.2 accepts adjacent same-line `if` statements that 3.0.x rejects, and one compile error silently drops the entire chunk, so every suite must pass under `sq30` before packaging.
-- `tools/check.py` runs the Squirrel suites (requiring a success marker and empty stderr), Node behavior tests, and `node --check` on all UI JavaScript. `tools/package.py` builds a deterministic `dist/mod_xbro-<version>.zip` from runtime files, README, LICENSE, notices, and docs only. The pinned `mod_msu-1.9.0.zip` in `.tools/` is hash-checked before its settings classes are extracted for the settings suite.
+- `tools/check.py` runs the Squirrel suites (requiring a success marker and empty stderr), Python auditor/package tests, Node behavior tests, and `node --check` on all UI JavaScript. `tools/package.py` builds a deterministic `dist/mod_battle_luck_meter-<version>.zip` from runtime files, README, LICENSE, notices, and docs only. The pinned `mod_msu-1.9.0.zip` in `.tools/` is hash-checked before its settings classes are extracted for the settings suite.
 - Decompiled vanilla sources, the installed game under Steam, and the installed mod stack are read-only evidence. Cite file and line when an engine fact matters.
 
 ## Engineering

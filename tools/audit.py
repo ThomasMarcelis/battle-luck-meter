@@ -1,9 +1,9 @@
-"""Replay xBro's battle evidence and verify capture, pricing, calculations and UI receipts.
+"""Replay Battle Luck Meter evidence and verify capture, pricing, calculations and UI receipts.
 
 usage: python3 tools/audit.py [--attacks] <log.html or - for stdin>
 Exit 0: complete journal checks passed within the printed limits.
 Exit 1: invalid/inconsistent evidence or a source-model pricing discrepancy.
-Exit 2: incomplete evidence (including legacy v0.2 arithmetic-only logs).
+Exit 2: incomplete evidence (including v0.2 arithmetic-only logs).
 """
 from collections import namedtuple
 import math
@@ -16,7 +16,10 @@ import re
 import urllib.parse
 
 # One entry, with its log.html time stamp when the row markup is present.
-LINE = re.compile(r'(?:<div class="time">([^<]*)</div><div class="tag">[^<]*</div><div class="text">)?\[xBro\] ([^<\n]*)')
+RUNTIME_CHANNEL = 'BattleLuckMeter'
+UI_CHANNEL = 'BattleLuckMeterUI'
+LINE = re.compile(r'(?:<div class="time">([^<]*)</div><div class="tag">[^<]*</div><div class="text">)?\['
+                  + re.escape(RUNTIME_CHANNEL) + r'\] ([^<\n]*)')
 FIELD = re.compile(r'([a-z_]+)=("[^"]*"|\S+)')
 SIDES = ('ours', 'theirs')
 TOLERANCE = 0.002  # the game sums 32-bit floats; three decimals can differ in the last digit
@@ -40,7 +43,7 @@ def parse(text):
 
 
 def summary(attacks, min_attacks):
-    """Legacy normal approximation, retained for old logs only."""
+    """Normal approximation retained for schema-2 arithmetic logs."""
     sides = {side: {'n': 0, 'hits': 0, 'sumP': 0.0, 'sumPQ': 0.0} for side in SIDES}
     for attack in attacks:
         p, side = float(attack['p']), sides[attack['side']]
@@ -88,7 +91,7 @@ def legacy_main(argv):
     text = sys.stdin.read() if paths[0] == '-' else Path(paths[0]).read_text(encoding='utf-8', errors='replace')
     battles, warnings = parse(text)
     if not battles:
-        sys.exit('no [xBro] entries found')
+        sys.exit('no Battle Luck Meter entries found')
     for warning in warnings:
         print(f'WARNING {warning}')
     counts = {'match': 0, 'unfinished': 0, 'mismatch': 0}
@@ -123,13 +126,17 @@ def legacy_main(argv):
             counts['match'] += 1
             print('  MATCH')
     print(f"{len(battles)} battles: {counts['match']} match, {counts['unfinished']} unfinished, {counts['mismatch']} mismatch")
-    print('LEGACY: pricing inputs, exclusions and UI receipts absent; arithmetic replay only')
+    print('SCHEMA 2: pricing inputs, exclusions and UI receipts absent; arithmetic replay only')
     return 1 if counts['mismatch'] else 2
 
 
 # Schemas 2 and 3 are journals, not just a collection of final totals. Every line and every
 # attempted native call must reconcile, including errors and asynchronous UI reports.
-JOURNAL_LINE = re.compile(r'\[(xBro|xBroUI)\] ([^<\n]*)')
+CHANNELS = {
+    RUNTIME_CHANNEL: 'runtime',
+    UI_CHANNEL: 'ui',
+}
+JOURNAL_LINE = re.compile(r'\[(' + '|'.join(map(re.escape, CHANNELS)) + r')\] ([^<\n]*)')
 TOKEN = re.compile(r'([a-z_]+)=("[^"\r\n]*"|[^\s"=]+)(?: +|$)')
 BOOLS = {'enabled', 'show_percentages', 'pending', 'allow_diversion', 'target_present', 'alive', 'attackable', 'uses_hitchance',
          'able_to_die', 'ranged', 'projectile', 'by_controlled', 'on_controlled', 'hit', 'counted', 'ended', 'allied'}
@@ -178,8 +185,8 @@ def journal(text):
                     value = urllib.parse.unquote(value, errors='strict')
                 fields[key] = value
                 at = token.end()
-            channel = match.group(1)
-            for key in ('schema', 'seq' if channel == 'xBro' else 'ui_seq', 'battle', 'event'):
+            channel = CHANNELS[match.group(1)]
+            for key in ('schema', 'seq' if channel == 'runtime' else 'ui_seq', 'battle', 'event'):
                 if key not in fields:
                     raise ValueError(f'missing {key}')
             schemas.add(fields['schema'])
@@ -195,18 +202,20 @@ def journal(text):
                 if fields[key] not in ('0', '1'):
                     raise ValueError(f'{key} must be 0 or 1')
             fields['channel'] = channel
-            if channel == 'xBroUI' and event != 'ui':
+
+            if channel == 'ui' and event != 'ui':
                 raise ValueError('UI channel may only report presentation')
-            if channel == 'xBro' and event == 'ui':
+            if channel == 'runtime' and event == 'ui':
                 raise ValueError('UI observations must come from the UI channel')
             entries.append(fields)
         except (ValueError, UnicodeError) as error:
             problems.append(f'line {len(entries)+1}: {error}')
     # Runtime/JS failures do not necessarily use the structured prefix.
-    for match in re.finditer(r'xBro [^<\r\n]*?failed[^<\r\n]*', text):
+    failure_line = re.compile(r'BattleLuckMeter [^<\r\n]*?failed[^<\r\n]*')
+    for match in failure_line.finditer(text):
         problems.append('runtime error: ' + match.group(0))
-    if text.count('[xBro]') + text.count('[xBroUI]') != len(list(JOURNAL_LINE.finditer(text))):
-        problems.append('malformed xBro entry')
+    if sum(text.count(f'[{name}]') for name in CHANNELS) != len(list(JOURNAL_LINE.finditer(text))):
+        problems.append('malformed Battle Luck Meter entry')
     return entries, problems
 
 
@@ -516,7 +525,7 @@ def audit_journal(text, show_attacks=False):
     last_render = {}
     for e in entries:
         try:
-            if e['channel'] == 'xBro':
+            if e['channel'] == 'runtime':
                 seq = number(e, 'seq', True)
                 if seq != sequence+1:
                     errors.append(f'journal sequence {sequence} -> {seq}: missing, duplicate or reordered entry')
@@ -534,10 +543,10 @@ def audit_journal(text, show_attacks=False):
                                        'mass': [1.0], 'excluded': 0, 'enabled': None, 'minimum': None, 'states': 0, 'needs_state': False, 'needs_push': False,
                                        'presentation': None, 'model': DEFAULT_MODEL, 'pricing_model': 'displayed_chance_v1', 'show_percentages': None})
             event = e['event']
-            if e['channel'] == 'xBro' and b['needs_push'] and event != 'push':
+            if e['channel'] == 'runtime' and b['needs_push'] and event != 'push':
                 errors.append(f'battle {bid}: missing push after state')
                 b['needs_push'] = False
-            if e['channel'] == 'xBro' and b['needs_state'] and event != 'state':
+            if e['channel'] == 'runtime' and b['needs_state'] and event != 'state':
                 errors.append(f'battle {bid}: missing state after counted result')
                 b['needs_state'] = False
             if event == 'start':
@@ -834,7 +843,7 @@ def main(argv):
     if len(paths) != 1:
         sys.exit(__doc__)
     text = sys.stdin.read() if paths[0] == '-' else Path(paths[0]).read_text(encoding='utf-8', errors='strict')
-    if '[xBro] schema=' not in text:
+    if f'[{RUNTIME_CHANNEL}] schema=' not in text:
         if paths[0] == '-':
             from io import StringIO
             original, sys.stdin = sys.stdin, StringIO(text)

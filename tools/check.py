@@ -28,16 +28,16 @@ with ZipFile(msu_zip) as archive:
             destination.write_bytes(archive.read(name))
 
 # Read-only instrument: the runtime must never read the combat log or roll dice itself.
-runtime = [*ROOT.glob('scripts/mods/xbro/*.nut'), ROOT / 'scripts/!mods_preload/mod_xbro.nut']
+runtime = [*ROOT.glob('scripts/mods/battle_luck_meter/*.nut'), ROOT / 'scripts/!mods_preload/mod_battle_luck_meter.nut']
 for path in runtime:
     for forbidden in ('EventLog', 'logEx', 'Rolled', 'Math.rand'):
         if forbidden in path.read_text():
-            sys.exit(f'{path.relative_to(ROOT)} references {forbidden}; xBro only reads attackEntity results.')
+            sys.exit(f'{path.relative_to(ROOT)} references {forbidden}; Battle Luck Meter only reads attackEntity results.')
 
 for runner in runners:
     for suite in ['tests/run.nut', 'tests/settings.nut']:
         result = subprocess.run([str(runner), suite], cwd=ROOT, text=True, capture_output=True)
-        passed = re.search(r'^XBRO_TESTS_PASSED (\d+)$', result.stdout, re.MULTILINE)
+        passed = re.search(r'^BATTLE_LUCK_METER_TESTS_PASSED (\d+)$', result.stdout, re.MULTILINE)
         # Squirrel's CLI may return success after an exception.
         if result.returncode or result.stderr or passed is None:
             print(result.stdout, end='')
@@ -45,8 +45,9 @@ for runner in runners:
             sys.exit(1)
         print(f'{runner.name} {suite}: {passed[1]} passed', flush=True)
 
-# End-to-end replay and damaged-evidence cases use the actual Squirrel emitter.
-subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'audit_test.py'], cwd=ROOT, check=True)
+# End-to-end replay and damaged-evidence cases use the actual Squirrel emitter;
+# packaging checks rebuild twice and compare every archive member with its source.
+subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', '*_test.py'], cwd=ROOT, check=True)
 
 js_tests = sorted((ROOT / 'tests').glob('*.test.cjs'))
 subprocess.run(['node', '--test', '--test-reporter=spec', *map(str, js_tests)], cwd=ROOT, check=True)

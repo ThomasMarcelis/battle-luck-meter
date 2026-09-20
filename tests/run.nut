@@ -1,8 +1,8 @@
 try
 {
     dofile("tests/fixtures.nut");
-    foreach (file in ["core", "stats", "capture", "ui"]) dofile("scripts/mods/xbro/" + file + ".nut");
-    loadfile("scripts/!mods_preload/mod_xbro.nut");
+    foreach (file in ["core", "stats", "capture", "ui"]) dofile("scripts/mods/battle_luck_meter/" + file + ".nut");
+    loadfile("scripts/!mods_preload/mod_battle_luck_meter.nut");
     local count = 0;
     foreach (file in ["stats", "capture", "lifecycle", "logging"])
     {
@@ -11,9 +11,9 @@ try
         names.sort();
         foreach (name in names)
         {
-            local globals = clone getroottable(), api = clone ::XBro, math = clone ::Math;
+            local globals = clone getroottable(), api = clone ::BattleLuckMeter, math = clone ::Math;
             ::Errors.clear();
-            ::XBro.reset();
+            ::BattleLuckMeter.reset();
             ::Logs.clear();
             try { cases[name](); }
             catch (e) { throw file + "/" + name + ": " + e; }
@@ -21,13 +21,13 @@ try
             foreach (key, value in getroottable()) if (!(key in globals)) added.push(key);
             foreach (key in added) delete getroottable()[key];
             foreach (key, value in globals) getroottable()[key] = value;
-            ::XBro.clear(); foreach (key, value in api) ::XBro[key] <- value;
+            ::BattleLuckMeter.clear(); foreach (key, value in api) ::BattleLuckMeter[key] <- value;
             ::Math.clear(); foreach (key, value in math) ::Math[key] <- value;
             count++;
             print("PASS " + file + "/" + name + "\n");
         }
     }
-    print("XBRO_TESTS_PASSED " + count + "\n");
+    print("BATTLE_LUCK_METER_TESTS_PASSED " + count + "\n");
     return 0;
 }
 catch (e)

@@ -1,6 +1,6 @@
 // Keep evidence at the same boundary as each decision. No extra property builds or
 // dice are needed: these are the inputs the meter already reads, not live-actor dumps.
-::XBro.classify <- function( _skill, _user, _target, _allowDiversion, _e = null )
+::BattleLuckMeter.classify <- function( _skill, _user, _target, _allowDiversion, _e = null )
 {
     local e = _e == null ? {} : _e;
     e.target_present <- _target != null;
@@ -69,7 +69,7 @@
     return {side = e.side, p = p};
 };
 
-::XBro.identify <- function( _e, _prefix, _entity )
+::BattleLuckMeter.identify <- function( _e, _prefix, _entity )
 {
     if (_entity == null) return;
     try { _e[_prefix + "_id"] <- _entity.getID(); _e[_prefix] <- _entity.getName(); }
@@ -78,7 +78,7 @@
 
 // An attempt is written BEFORE the native call, including excluded calls. Its result
 // follows afterwards and refers to the same ID even if native calls nest/re-enter.
-::XBro.price <- function( _skill, _user, _target, _allowDiversion )
+::BattleLuckMeter.price <- function( _skill, _user, _target, _allowDiversion )
 {
     this.Battle.attempts++;
     local trial = {battle = this.Battle, attempt = this.Battle.attempts, sample = null};
@@ -98,7 +98,7 @@
     return trial;
 };
 
-::XBro.settle <- function( _trial, _hit )
+::BattleLuckMeter.settle <- function( _trial, _hit )
 {
     if (_trial == null) return;
     if (_trial.battle != this.Battle)
@@ -132,7 +132,7 @@
 
 // Check every intermediate total, both tails, the axis position and every readout. The
 // exact figures sit beside the smoothed ones so each remains independently checkable.
-::XBro.checkpoint <- function( _event )
+::BattleLuckMeter.checkpoint <- function( _event )
 {
     local s = this.summary(), b = this.Battle;
     this.log(_event, {attempts = b.attempts, results = b.results, excluded = b.excluded, errors = b.errors,
@@ -145,7 +145,7 @@
         enabled = this.enabled(), show_percentages = this.showPercentages(), text = s.text});
 };
 
-::XBro.finish <- function()
+::BattleLuckMeter.finish <- function()
 {
     if (this.Battle.ended) { this.fail("finish", "duplicate end"); return; }
     this.checkpoint("end");

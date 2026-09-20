@@ -31,10 +31,10 @@ The overview also shows net hit swing and attack count. With a full party, scrol
 ## Install
 
 Requires [Modern Hooks](https://www.nexusmods.com/battlebrothers/mods/685) 0.6.0+ and
-[MSU](https://www.nexusmods.com/battlebrothers/mods/479) 1.9.0+. Drop `mod_xbro-<version>.zip` into the game's
+[MSU](https://www.nexusmods.com/battlebrothers/mods/479) 1.9.0+. Drop `mod_battle_luck_meter-<version>.zip` into the game's
 `data` folder. The global visibility and relative-percentage settings are in the MSU settings menu under
-**Battle Luck Meter**. The technical mod ID and archive prefix remain `mod_xbro` so existing settings and installs
-continue to use the same identity.
+**Battle Luck Meter**. Its technical mod ID and archive prefix are `mod_battle_luck_meter`; this clean 1.0.0 identity has no
+install or settings aliases for the internal pre-release name.
 
 ## What it measures
 
@@ -79,15 +79,16 @@ The auditor derives eligibility and probability from the recorded inputs, replay
 calculation, and compares the rendered text/marker with the state sent by Squirrel. It rejects missing,
 duplicate or inconsistent events and reports absent results, UI receipts and battle boundaries. Exit status
 `0` means the journal checks passed within the stated limits, `1` means invalid evidence or a pricing-model
-or allied-faction sampling discrepancy, and `2` means incomplete evidence. Schema 2 journals remain supported; old v0.2 logs remain readable as arithmetic-only evidence.
+or allied-faction sampling discrepancy, and `2` means incomplete evidence. Schema 2 remains covered as an
+arithmetic-only regression fixture; no pre-release identity aliases ship in 1.0.0.
 
-Schema 3 entries begin `[xBro] schema=3 seq=... battle=... event=...`. Strings are quoted; unsafe bytes use
+Schema 3 entries begin `[BattleLuckMeter] schema=3 seq=... battle=... event=...`. Strings are quoted; unsafe bytes use
 `%HH` escapes, decoded once after parsing. Probabilities use nine significant digits. Actor IDs identify
-entities within the session; names are decoration. Squirrel and `[xBroUI]` browser receipts have separate
+entities within the session; names are decoration. Squirrel and `[BattleLuckMeterUI]` browser receipts have separate
 session sequences. Since 0.3.1, receipts go through MSU's session connection to Squirrel's logger,
 preserving their originating battle and push IDs after tactical UI disconnection. Battle starts identify
-the version, the probability, statistics, marker and UI models, percentage setting, and receipt transport. Journals
-from 0.4.1 onwards still replay under their own semantics. Earlier console-based receipts
+the version, the probability, statistics, marker and UI models, percentage setting, and receipt transport.
+Synthetic fixtures retain the pre-release model semantics for regression coverage. Earlier console-based receipts
 were absent from a live log; the new transport still needs live confirmation.
 
 ## What it deliberately does not measure
@@ -124,5 +125,5 @@ were absent from a live log; the new transport still needs live confirmation.
 - The hook cannot observe the native local roll/threshold, hidden modifiers, or attacks that bypass it.
   DOM receipts verify assigned values, not visual fit. More logging cannot establish those facts by itself.
 - The Lucky/Beginner correction included in 1.0.0 has not yet been confirmed in-game. Its mathematics, rendering and journal
-  contract are covered by the offline suites and by replay of v0.4.1-v0.4.5 journals, but the corrected edge case
+  contract are covered by the offline suites and synthetic pre-release model fixtures, but the corrected edge case
   still needs a native play session and a ZIP removal/reinstall check before release.

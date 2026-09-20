@@ -1,9 +1,9 @@
-local X = ::XBro, cases = {};
+local X = ::BattleLuckMeter, cases = {};
 
 function module( _connected, _isNull = false )
 {
     return {pushed = [], connected = _connected, isNull = function() { return _isNull; },
-        isConnected = function() { return this.connected; }, xbroPush = function( _data ) { this.pushed.push(_data); }};
+        isConnected = function() { return this.connected; }, battleLuckMeterPush = function( _data ) { this.pushed.push(_data); }};
 }
 
 cases.push_reaches_only_a_live_topbar_module <- function()

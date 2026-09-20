@@ -1,7 +1,7 @@
 // Print a scripted session as log.html rows, so tools/audit.py is checked against the mod's real line format.
 dofile("tests/fixtures.nut");
-foreach (file in ["core", "stats", "capture", "ui"]) dofile("scripts/mods/xbro/" + file + ".nut");
-local X = ::XBro;
+foreach (file in ["core", "stats", "capture", "ui"]) dofile("scripts/mods/battle_luck_meter/" + file + ".nut");
+local X = ::BattleLuckMeter;
 
 function row( _kind, _text )
 {
@@ -19,7 +19,7 @@ function play( _chances, _hits, _ours )
 local uiSequence = 0;
 function receipt( data )
 {
-    local line = "[xBroUI] schema=3 ui_seq=" + (++uiSequence) + " battle=" + data.origin_battle + " event=ui";
+    local line = "[BattleLuckMeterUI] schema=3 ui_seq=" + (++uiSequence) + " battle=" + data.origin_battle + " event=ui";
     foreach (key, value in data)
     {
         local kind = typeof value;
@@ -44,7 +44,7 @@ world(); local values = settings();
 // A synchronous presentation double exercises the same receipt format as JS.
 ::Tactical.TopbarRoundInformation = {
     last = null, isNull = @() false,
-    xbroPush = function( data ) {
+    battleLuckMeterPush = function( data ) {
         this.last = data;
         renderedReceipt(data, {origin_battle = data.battle, push = data.push, view = data.battle, surface = "battle", status = "rendered",
             display = data.enabled ? "" : "none", emphasis = data.emphasis, left = data.marker + "%"});

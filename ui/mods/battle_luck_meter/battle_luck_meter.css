@@ -1,5 +1,5 @@
 /* Sits under the central plaque (31.8 x 8.2rem, tactical_screen.css .middle-module-container). */
-.tactical-screen .topbar-round-information-module .xbro-luck
+.tactical-screen .topbar-round-information-module .battle-luck-meter-luck
 {
     top: 8.3rem;
     left: 0;
@@ -10,13 +10,13 @@
     margin: auto;
 }
 
-.tactical-screen .topbar-round-information-module .xbro-luck.xbro-show-percentages
+.tactical-screen .topbar-round-information-module .battle-luck-meter-luck.battle-luck-meter-show-percentages
 {
     height: 3.8rem;
 }
 
-.tactical-screen .xbro-track,
-.tactical-combat-result-screen .xbro-track
+.tactical-screen .battle-luck-meter-track,
+.tactical-combat-result-screen .battle-luck-meter-track
 {
     top: 0.35rem;
     left: 50%;
@@ -30,8 +30,8 @@
     box-shadow: inset 0 0 0.25rem rgba(0, 0, 0, 0.9), 0 0 0.15rem rgba(0, 0, 0, 0.6);
 }
 
-.tactical-screen .xbro-marker,
-.tactical-combat-result-screen .xbro-marker
+.tactical-screen .battle-luck-meter-marker,
+.tactical-combat-result-screen .battle-luck-meter-marker
 {
     top: -0.4rem;
     left: 50%;
@@ -47,13 +47,13 @@
 /* Glide between pushes so a single attack reads as a move, not a jump. Only the live
    bar animates; the results bar is a final figure and simply appears at it. Receipts
    report the inline style, which is the target, so the journal stays exact. */
-.tactical-screen .xbro-marker
+.tactical-screen .battle-luck-meter-marker
 {
     transition: left 250ms ease-out;
 }
 
-.tactical-screen .xbro-centre,
-.tactical-combat-result-screen .xbro-centre
+.tactical-screen .battle-luck-meter-centre,
+.tactical-combat-result-screen .battle-luck-meter-centre
 {
     position: absolute;
     left: 50%;
@@ -62,8 +62,8 @@
     border-left: 1px solid rgba(230, 211, 174, 0.45);
 }
 
-.tactical-screen .xbro-readouts,
-.tactical-combat-result-screen .xbro-readouts
+.tactical-screen .battle-luck-meter-readouts,
+.tactical-combat-result-screen .battle-luck-meter-readouts
 {
     position: absolute;
     top: 1.3rem;
@@ -74,28 +74,28 @@
     white-space: nowrap;
 }
 
-.tactical-screen .xbro-readout,
-.tactical-combat-result-screen .xbro-readout
+.tactical-screen .battle-luck-meter-readout,
+.tactical-combat-result-screen .battle-luck-meter-readout
 {
     display: inline-block;
     margin: 0 0.6rem;
 }
 
-.tactical-screen .xbro-good,
-.tactical-combat-result-screen .xbro-good
+.tactical-screen .battle-luck-meter-good,
+.tactical-combat-result-screen .battle-luck-meter-good
 {
     color: #8fbc59;
 }
 
-.tactical-screen .xbro-bad,
-.tactical-combat-result-screen .xbro-bad
+.tactical-screen .battle-luck-meter-bad,
+.tactical-combat-result-screen .battle-luck-meter-bad
 {
     color: #e06b58;
 }
 
 
 /* Keep the summary in the native list's scrollable flow, after every brother. */
-.tactical-combat-result-screen .statistics-panel .xbro-results-list
+.tactical-combat-result-screen .statistics-panel .battle-luck-meter-results-list
 {
     position: relative;
     top: 0;
@@ -105,13 +105,13 @@
     overflow: hidden;
 }
 
-.tactical-combat-result-screen .statistics-panel .xbro-results-overflow .statistic-container.is-middle
+.tactical-combat-result-screen .statistics-panel .battle-luck-meter-results-overflow .statistic-container.is-middle
 {
     margin-left: 0;
     margin-right: 0;
 }
 
-.tactical-combat-result-screen .xbro-result-luck
+.tactical-combat-result-screen .battle-luck-meter-result-luck
 {
     clear: both;
     position: relative;
@@ -123,13 +123,13 @@
     text-align: center;
 }
 
-.tactical-combat-result-screen .xbro-result-title
+.tactical-combat-result-screen .battle-luck-meter-result-title
 {
     padding-top: 0.7rem;
     line-height: 2.8rem;
 }
 
-.tactical-combat-result-screen .xbro-result-luck .xbro-track
+.tactical-combat-result-screen .battle-luck-meter-result-luck .battle-luck-meter-track
 {
     position: relative;
     top: auto;
@@ -138,36 +138,36 @@
     margin: 1.2rem auto 0.8rem;
 }
 
-.tactical-combat-result-screen .xbro-result-luck .xbro-readouts
+.tactical-combat-result-screen .battle-luck-meter-result-luck .battle-luck-meter-readouts
 {
     position: static;
     line-height: 2.8rem;
 }
 
-.tactical-combat-result-screen .xbro-result-verdict
+.tactical-combat-result-screen .battle-luck-meter-result-verdict
 {
     line-height: 2.2rem;
 }
 
-.tactical-combat-result-screen .xbro-result-sides
+.tactical-combat-result-screen .battle-luck-meter-result-sides
 {
     overflow: hidden;
     line-height: 2.4rem;
 }
 
-.tactical-combat-result-screen .xbro-result-luck .xbro-readout
+.tactical-combat-result-screen .battle-luck-meter-result-luck .battle-luck-meter-readout
 {
     width: 50%;
     margin: 0;
 }
 
-.tactical-combat-result-screen .xbro-result-side
+.tactical-combat-result-screen .battle-luck-meter-result-side
 {
     float: left;
     width: 50%;
 }
 
-.tactical-combat-result-screen .xbro-result-context
+.tactical-combat-result-screen .battle-luck-meter-result-context
 {
     margin: 0.8rem 1.5rem 0;
     line-height: 2.4rem;

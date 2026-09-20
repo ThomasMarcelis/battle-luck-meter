@@ -1,4 +1,4 @@
-local X = ::XBro, cases = {};
+local X = ::BattleLuckMeter, cases = {};
 
 cases.inclusive_tails_keep_common_outcomes_neutral <- function()
 {

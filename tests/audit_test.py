@@ -33,7 +33,7 @@ class AuditTests(unittest.TestCase):
         seq = ui_seq = 0
         out = []
         for line in lines:
-            if line.startswith('[xBroUI]'):
+            if line.startswith(f'[{audit.UI_CHANNEL}]'):
                 ui_seq += 1
                 line = re.sub(r'\bui_seq=\d+', f'ui_seq={ui_seq}', line)
             else:
@@ -66,6 +66,14 @@ class AuditTests(unittest.TestCase):
         self.assertTrue(any(e.get('on') == 'A" p=0 x="<>&%\n\\' for e in entries))
         beginner_lucky = next(e for e in entries if e.get('event') == 'attempt' and e.get('battle') == '9')
         self.assertAlmostEqual(float(beginner_lucky['p']), .995)
+
+    def test_current_identity_replays(self):
+        self.assertTrue(self.lines)
+        self.assertTrue(all(line.startswith((f'[{audit.RUNTIME_CHANNEL}]', f'[{audit.UI_CHANNEL}]'))
+                            for line in self.lines))
+        status, output = self.replay()
+        self.assertEqual(status, 0, output)
+        self.assertIn('0 errors, 0 model discrepancies, 0 evidence gaps', output)
 
     def test_allied_cross_faction_attack_is_a_model_discrepancy(self):
         status, output = self.replay(self.change('attempt', 'allied', '1'))
@@ -164,7 +172,7 @@ class AuditTests(unittest.TestCase):
 
     def test_delayed_ui_receipt_can_interleave_squirrel_checkpoints(self):
         lines = self.lines.copy()
-        index = next(i for i,s in enumerate(lines) if '[xBroUI]' in s)
+        index = next(i for i,s in enumerate(lines) if f'[{audit.UI_CHANNEL}]' in s)
         delayed = lines.pop(index)
         second = [i for i,s in enumerate(lines) if 'event=result ' in s][1]
         lines.insert(second+1, delayed)
@@ -225,13 +233,13 @@ class AuditTests(unittest.TestCase):
         """0.4.1/0.4.2 rendered both percentages unconditionally, so receipts always carry them."""
         readouts = {}
         for line in lines:
-            if line.startswith('[xBro]') and ' event=push ' in line:
+            if line.startswith(f'[{audit.RUNTIME_CHANNEL}]') and ' event=push ' in line:
                 readouts[self.field(line, 'push')] = {key: self.field(line, key) for key in audit.READOUT_FIELDS
                                                       if key not in ('marker', 'emphasis')}
         out = []
         for line in lines:
             line = re.sub(r' (show_percentages|badges)=("[^"]*"|\S+)', '', line)
-            if line.startswith('[xBroUI]') and 'status="rendered"' in line:
+            if line.startswith(f'[{audit.UI_CHANNEL}]') and 'status="rendered"' in line:
                 for key in audit.READOUT_FIELDS:
                     if key not in ('marker', 'emphasis'):
                         line = re.sub(rf' {key}=("[^"]*"|\S+)', '', line)
@@ -253,7 +261,8 @@ class AuditTests(unittest.TestCase):
 
     def bar_only_0_4_3(self, lines):
         out = self.rebase(lines, '0.4.3', (' marker_model="evidence_weight_v1"', ' ui_model="bar_only_v1"'), 1 / 11)
-        return self.renumber([re.sub(r' (show_percentages|badges)=("[^"]*"|\S+)', '', line) if line.startswith('[xBro]')
+        return self.renumber([re.sub(r' (show_percentages|badges)=("[^"]*"|\S+)', '', line)
+                              if line.startswith(f'[{audit.RUNTIME_CHANNEL}]')
                               else re.sub(r' ((ours|theirs)_(percent|tone)|badges)=("[^"]*"|\S+)', '', line) for line in out])
 
     def percent_option_0_4_4(self, lines):
@@ -271,7 +280,7 @@ class AuditTests(unittest.TestCase):
         self.assertTrue(any('event=start ' in line and 'version="1.0.0"' in line and
                             'model="displayed_chance_v2"' in line and
                             'ui_model="smoothed_percent_option_v1"' in line for line in self.lines))
-        rendered = [line for line in self.lines if line.startswith('[xBroUI]') and 'status="rendered"' in line]
+        rendered = [line for line in self.lines if line.startswith(f'[{audit.UI_CHANNEL}]') and 'status="rendered"' in line]
         hidden = [line for line in rendered if 'badges="hidden"' in line]
         visible = [line for line in rendered if 'badges="rendered"' in line]
         self.assertTrue(hidden and visible)
@@ -280,19 +289,19 @@ class AuditTests(unittest.TestCase):
         for line in visible:
             self.assertTrue(all(re.search(rf'\b{key}=', line) for key in audit.READOUT_FIELDS[2:]))
         lines = self.lines.copy()
-        index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'badges="hidden"' in line)
+        index = next(i for i, line in enumerate(lines) if line.startswith(f'[{audit.UI_CHANNEL}]') and 'badges="hidden"' in line)
         lines[index] += ' ours_percent="+1900%25"'
         status, output = self.replay(lines)
         self.assertEqual(status, 1, output)
         self.assertIn('hidden badge receipt contains a percentage readout', output)
         lines = self.lines.copy()
-        index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'badges="rendered"' in line)
+        index = next(i for i, line in enumerate(lines) if line.startswith(f'[{audit.UI_CHANNEL}]') and 'badges="rendered"' in line)
         lines[index] = lines[index].replace('badges="rendered"', 'badges="hidden"')
         status, output = self.replay(lines)
         self.assertEqual(status, 1, output)
         self.assertIn('badges', output)
         lines = self.lines.copy()
-        index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'badges="rendered"' in line)
+        index = next(i for i, line in enumerate(lines) if line.startswith(f'[{audit.UI_CHANNEL}]') and 'badges="rendered"' in line)
         lines[index] = re.sub(r'ours_tone="[^"]*"', 'ours_tone="neutral"', lines[index])
         status, output = self.replay(lines)
         self.assertEqual(status, 1, output)
@@ -309,7 +318,7 @@ class AuditTests(unittest.TestCase):
                 self.assertEqual(status, 0, output)
                 self.assertIn('0 errors, 0 model discrepancies, 0 evidence gaps', output)
         lines = self.bar_only_0_4_3(emitted)
-        index = next(i for i, line in enumerate(lines) if line.startswith('[xBroUI]') and 'status="rendered"' in line)
+        index = next(i for i, line in enumerate(lines) if line.startswith(f'[{audit.UI_CHANNEL}]') and 'status="rendered"' in line)
         lines[index] += ' ours_percent="+1900%25"'
         status, output = self.replay(lines)
         self.assertEqual(status, 1, output)
@@ -412,22 +421,22 @@ class AuditTests(unittest.TestCase):
     def test_no_battle_is_incomplete(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            status = audit.audit_journal('[xBro] schema=2 seq=1 battle=0 event=settings enabled=1 min_attacks=8')
+            status = audit.audit_journal('[BattleLuckMeter] schema=2 seq=1 battle=0 event=settings enabled=1 min_attacks=8')
         self.assertEqual(status, 2)
         self.assertIn('no numbered battle', out.getvalue())
 
     def test_external_runtime_error_is_not_ignored(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            status = audit.audit_journal(self.text+'xBro capture failed: test\n')
+            status = audit.audit_journal(self.text+'BattleLuckMeter capture failed: test\n')
         self.assertEqual(status, 1)
         self.assertIn('runtime error', out.getvalue())
 
     def test_legacy_schema_two_still_replays_and_mixed_schemas_fail(self):
         lines = [
-            '[xBro] schema=2 seq=1 battle=1 event=start version="0.3.0" model="displayed_chance_v1" enabled=1 min_attacks=8',
-            '[xBro] schema=2 seq=2 battle=1 event=end attempts=0 results=0 excluded=0 errors=0 attack=0 ours_n=0 ours_hits=0 ours_expected=0 ours_variance=0 theirs_n=0 theirs_hits=0 theirs_expected=0 theirs_variance=0 z=0 rank=50 offset=0 pending=1 enabled=1 min_attacks=8 text=""',
-            '[xBro] schema=2 seq=3 battle=1 event=close ended=1']
+            '[BattleLuckMeter] schema=2 seq=1 battle=1 event=start version="0.3.0" model="displayed_chance_v1" enabled=1 min_attacks=8',
+            '[BattleLuckMeter] schema=2 seq=2 battle=1 event=end attempts=0 results=0 excluded=0 errors=0 attack=0 ours_n=0 ours_hits=0 ours_expected=0 ours_variance=0 theirs_n=0 theirs_hits=0 theirs_expected=0 theirs_variance=0 z=0 rank=50 offset=0 pending=1 enabled=1 min_attacks=8 text=""',
+            '[BattleLuckMeter] schema=2 seq=3 battle=1 event=close ended=1']
         status, output = self.replay(lines)
         self.assertEqual(status, 2, output)
         self.assertIn('0 errors', output)

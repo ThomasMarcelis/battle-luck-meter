@@ -1,76 +1,76 @@
-::XBro.registerSettings <- function()
+::BattleLuckMeter.registerSettings <- function()
 {
     local page = this.Mod.ModSettings.addPage("General");
     local refresh = function( _old ) {
-        try { ::XBro.log("settings", {enabled = ::XBro.enabled(), show_percentages = ::XBro.showPercentages()}); ::XBro.checkpoint("state"); ::XBro.push(); }
-        catch (error) { ::XBro.fail("settings", error); }
+        try { ::BattleLuckMeter.log("settings", {enabled = ::BattleLuckMeter.enabled(), show_percentages = ::BattleLuckMeter.showPercentages()}); ::BattleLuckMeter.checkpoint("state"); ::BattleLuckMeter.push(); }
+        catch (error) { ::BattleLuckMeter.fail("settings", error); }
     };
     page.addBooleanSetting("Enabled", true, "Show luck meter", "Show luck during battle and after the brother cards on the results screen.").addAfterChangeCallback(refresh);
     page.addBooleanSetting("ShowPercentages", false, "Show relative hit percentages",
         "Show how each side's hits compare with expected hits. During battle the figures are scaled by how many attacks that side has made; the results screen shows them exactly.").addAfterChangeCallback(refresh);
 };
 
-::XBro.registerTooltips <- function()
+::BattleLuckMeter.registerTooltips <- function()
 {
-    this.Mod.Tooltips.setTooltips({Luck = ::MSU.Class.CustomTooltip(function( _data ) { return ::XBro.tooltip(); })});
+    this.Mod.Tooltips.setTooltips({Luck = ::MSU.Class.CustomTooltip(function( _data ) { return ::BattleLuckMeter.tooltip(); })});
 };
 
-::XBro.enabled <- @() this.Mod.ModSettings.getSetting("Enabled").getValue();
-::XBro.showPercentages <- @() this.Mod.ModSettings.getSetting("ShowPercentages").getValue();
+::BattleLuckMeter.enabled <- @() this.Mod.ModSettings.getSetting("Enabled").getValue();
+::BattleLuckMeter.showPercentages <- @() this.Mod.ModSettings.getSetting("ShowPercentages").getValue();
 
 // MSU's connection outlives tactical screens. Keep the browser's sequence and
 // originating battle intact, including receipts arriving after a battle reset.
-::XBro.uiReceipt <- function( _line )
+::BattleLuckMeter.uiReceipt <- function( _line )
 {
     try
     {
-        if (typeof _line != "string" || _line.find("[xBroUI] schema=3 ") != 0
+        if (typeof _line != "string" || _line.find("[BattleLuckMeterUI] schema=3 ") != 0
             || _line.find("\n") != null || _line.find("\r") != null) throw "invalid UI receipt";
         ::logInfo(_line);
     }
-    catch (error) { ::XBro.fail("ui_receipt", error); }
+    catch (error) { ::BattleLuckMeter.fail("ui_receipt", error); }
 };
 
 // Everything JS renders; JS never derives numbers itself.
-::XBro.state <- function()
+::BattleLuckMeter.state <- function()
 {
     local s = this.summary();
     return {enabled = this.enabled(), show_percentages = this.showPercentages(), marker = s.marker, emphasis = s.emphasis,
         ours_percent = s.ours.percent, ours_tone = s.ours.tone, theirs_percent = s.theirs.percent, theirs_tone = s.theirs.tone};
 };
 
-::XBro.sideText <- function( _label, _side )
+::BattleLuckMeter.sideText <- function( _label, _side )
 {
     return _label + ": " + _side.hits + (_side.hits == 1 ? " hit vs " : " hits vs ")
         + ::format("%.2f", _side.expected) + " expected";
 };
 
-::XBro.sampleText <- function( _n )
+::BattleLuckMeter.sampleText <- function( _n )
 {
     if (_n == 0) return "No attacks recorded.";
     return _n < 10 ? "Small sample: " + _n + (_n == 1 ? " attack." : " attacks.") : "Counted attacks: " + _n + ".";
 };
 
-::XBro.swingText <- function( _swing, _label = "Net hit swing" )
+::BattleLuckMeter.swingText <- function( _swing, _label = "Net hit swing" )
 {
     local amount = ::format("%.2f", this.abs(_swing));
     if (amount == "0.00") return _label + ": even.";
     return _label + ": " + amount + " hits " + (_swing > 0 ? "in your favour." : "against you.");
 };
 
-::XBro.tooltipSideText <- function( _label, _side )
+::BattleLuckMeter.tooltipSideText <- function( _label, _side )
 {
     return _label + ": " + _side.hits + "/" + _side.n + " hits vs " + ::format("%.2f", _side.expected) + " expected";
 };
 
-::XBro.tooltipSampleText <- function( _n )
+::BattleLuckMeter.tooltipSampleText <- function( _n )
 {
     if (_n == 0) return "No attacks recorded.";
     if (_n < 10) return "Small sample: " + _n + (_n == 1 ? " attack counted." : " attacks counted.");
     return _n + " attacks counted.";
 };
 
-::XBro.logPush <- function( _data, _status, _combatInformation = null )
+::BattleLuckMeter.logPush <- function( _data, _status, _combatInformation = null )
 {
     local fields = clone _data;
     delete fields.battle;
@@ -91,7 +91,7 @@
 // The capture boundary stops recording at battle end. No actor references or
 // saved history enter JS. The overview shows the exact result, not the live smoothing:
 // the exact tail at full emphasis and each side's unweighted hit percentage.
-::XBro.resultState <- function( _combatInformation = null )
+::BattleLuckMeter.resultState <- function( _combatInformation = null )
 {
     if (!this.Battle.ended) return null;
     local data = this.state(), s = this.summary();
@@ -107,7 +107,7 @@
     return data;
 };
 
-::XBro.tooltip <- function()
+::BattleLuckMeter.tooltip <- function()
 {
     local s = this.summary();
     local ours = this.tooltipSideText("You", s.ours), theirs = this.tooltipSideText("Enemy", s.theirs);
@@ -128,7 +128,7 @@
 };
 
 // Settings callbacks can fire outside a battle, before the topbar module ever existed.
-::XBro.push <- function()
+::BattleLuckMeter.push <- function()
 {
     local data = this.state();
     data.battle <- this.Battle.id; data.push <- ++this.Pushes; data.surface <- "battle";
@@ -136,5 +136,5 @@
     if (("Tactical" in getroottable()) && ("TopbarRoundInformation" in ::Tactical)) module = ::Tactical.TopbarRoundInformation;
     if (module != null && !module.isNull()) status = "requested";
     this.logPush(data, status);
-    if (status == "requested") module.xbroPush(data);
+    if (status == "requested") module.battleLuckMeterPush(data);
 };

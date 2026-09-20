@@ -1,4 +1,4 @@
-local X = ::XBro, cases = {};
+local X = ::BattleLuckMeter, cases = {};
 
 function trial( _skill, _user, _target, _allowDiversion = true ) { return X.classify(_skill, _user, _target, _allowDiversion); }
 

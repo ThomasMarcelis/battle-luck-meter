@@ -34,22 +34,22 @@ try
         }, registerLateJS = function( path ) { js.push(path); }, registerCSS = function( path ) { css.push(path); }
     };
     ::include <- @(path) dofile(path + ".nut");
-    dofile("scripts/!mods_preload/mod_xbro.nut");
-    if (queued == null || ("summary" in ::XBro)) throw "Modules must load in the queued startup callback";
+    dofile("scripts/!mods_preload/mod_battle_luck_meter.nut");
+    if (queued == null || ("summary" in ::BattleLuckMeter)) throw "Modules must load in the queued startup callback";
     queued.call(getroottable());
-    local X = ::XBro, system = ::MSU.System.ModSettings;
+    local X = ::BattleLuckMeter, system = ::MSU.System.ModSettings;
     local count = 0;
     function test( name, fn ) { try { fn(); } catch (e) { throw name + ": " + e; } count++; print("PASS " + name + "\n"); }
 
     test("registration_requirements_and_ui_files", function() {
-        check(X.ID == "mod_xbro", "technical ID remains compatible with existing settings and installs");
+        check(X.ID == "mod_battle_luck_meter", "technical ID uses the clean pre-release identity");
         check(X.Name == "Battle Luck Meter" && X.Version == "1.0.0", "public product identity");
         check(registration.id == X.ID && registration.version == X.Version && registration.name == X.Name, "registration identity");
         check(required.len() == 2 && required[0] == "mod_msu >= 1.9.0" && required[1] == "mod_modern_hooks >= 0.6.0", "requirements");
-        check(js.len() == 1 && js[0] == "ui/mods/xbro/xbro.js" && css.len() == 1 && css[0] == "ui/mods/xbro/xbro.css", "ui registration");
-        local receipt = "[xBroUI] schema=3 ui_seq=1 battle=0 event=ui";
+        check(js.len() == 1 && js[0] == "ui/mods/battle_luck_meter/battle_luck_meter.js" && css.len() == 1 && css[0] == "ui/mods/battle_luck_meter/battle_luck_meter.css", "ui registration");
+        local receipt = "[BattleLuckMeterUI] schema=3 ui_seq=1 battle=0 event=ui";
         local seq = X.Sequence;
-        ::MSU.UI.JSConnection.xbroLog(receipt);
+        ::MSU.UI.JSConnection.battleLuckMeterLog(receipt);
         check(::Logs.top() == receipt && X.Sequence == seq, "MSU callback writes browser evidence without changing Squirrel sequence");
         foreach (path in ["scripts/skills/skill", "scripts/states/tactical_state",
             "scripts/ui/screens/tactical/modules/topbar/tactical_screen_topbar_round_information",
@@ -71,7 +71,7 @@ try
         check(!X.enabled() && writes == 1 && ::Errors.len() == 0, "visibility persists outside a battle");
         system.updateSettingsFromJS({[X.ID] = {Enabled = {type = "bool", value = true}}});
         world();
-        local live = {pushed = [], isNull = @() false, xbroPush = function( _data ) { this.pushed.push(_data); }};
+        local live = {pushed = [], isNull = @() false, battleLuckMeterPush = function( _data ) { this.pushed.push(_data); }};
         ::Tactical.TopbarRoundInformation = live;
         system.updateSettingsFromJS({[X.ID] = {Enabled = {type = "bool", value = false}}});
         check(live.pushed.len() == 1 && live.pushed[0].enabled == false, "disabling mid-battle pushes the hidden state");
@@ -140,14 +140,14 @@ try
             isConnected = function() { return this.connected; }, isNull = @() false, update = function() { updates++; }};
         local mq = {update = null};
         hooks["scripts/ui/screens/tactical/modules/topbar/tactical_screen_topbar_round_information"](mq);
-        module.xbroPush <- mq.xbroPush.bindenv(module);
+        module.battleLuckMeterPush <- mq.battleLuckMeterPush.bindenv(module);
         module.update = mq.update(function() { updates++; }).bindenv(module);
         ::Tactical.TopbarRoundInformation = module;
         module.update();
         check(updates == 1 && sent.len() == 0, "disconnected module updates natively but pushes nothing");
         module.connected = true;
         module.update();
-        check(updates == 2 && sent.len() == 1 && sent[0][0] == "xbroUpdate" && sent[0][1].theirs_percent == "—", "native update then push");
+        check(updates == 2 && sent.len() == 1 && sent[0][0] == "battleLuckMeterUpdate" && sent[0][1].theirs_percent == "—", "native update then push");
         X.begin();
         X.settle(X.price(skill(70), actor(1), actor(2), true), true);
         check(sent.len() == 2 && sent[1][1].ours_percent == "+4%" && ::Errors.len() == 0, "each recorded attack pushes the weighted live badge");
@@ -165,8 +165,8 @@ try
             screen.queryData <- q.queryData(function() { calls++; return this.data; }).bindenv(screen);
             local result = screen.queryData();
             check(result == native && result.combatInformation.result == outcome && result.statistics.len() == 3, "native result preserved");
-            check(result.xbroLuck.ours_percent == "+43%", "luck added for " + outcome);
-            if (outcome == "retreat") check(::Errors.top().find("native_outcome") != null && result.xbroLuck.ours_percent == "+43%", "a missing native slot cannot drop the payload");
+            check(result.battleLuckMeterLuck.ours_percent == "+43%", "luck added for " + outcome);
+            if (outcome == "retreat") check(::Errors.top().find("native_outcome") != null && result.battleLuckMeterLuck.ours_percent == "+43%", "a missing native slot cannot drop the payload");
             else check(fields(::Logs.top()).native_result == outcome, "native outcome journaled");
         }
         check(calls == 3, "native query called once per outcome");
@@ -178,6 +178,6 @@ try
         check(::Errors.top().find("missing results") != null, "failure logged");
     });
 
-    print("XBRO_TESTS_PASSED " + count + "\n");
+    print("BATTLE_LUCK_METER_TESTS_PASSED " + count + "\n");
 }
 catch (e) { print("FAIL " + e + "\n"); }
