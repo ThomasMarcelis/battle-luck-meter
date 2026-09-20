@@ -1,5 +1,4 @@
 """Release archive identity, reproducibility, safety, and source-integrity checks."""
-from hashlib import sha256
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
@@ -36,7 +35,6 @@ class PackageTests(unittest.TestCase):
         first = self.build()
         second = self.build()
         self.assertEqual(first, second)
-        self.assertEqual(sha256(first).digest(), sha256(second).digest())
         with ZipFile(ARTIFACT) as archive:
             self.assertIsNone(archive.testzip())
             self.assertEqual(set(archive.namelist()), MEMBERS)

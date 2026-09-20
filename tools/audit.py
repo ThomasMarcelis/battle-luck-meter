@@ -211,7 +211,7 @@ def journal(text):
         except (ValueError, UnicodeError) as error:
             problems.append(f'line {len(entries)+1}: {error}')
     # Runtime/JS failures do not necessarily use the structured prefix.
-    failure_line = re.compile(r'BattleLuckMeter [^<\r\n]*?failed[^<\r\n]*')
+    failure_line = re.compile(r'Battle Luck Meter(?: UI)? [^<\r\n]*?failed[^<\r\n]*')
     for match in failure_line.finditer(text):
         problems.append('runtime error: ' + match.group(0))
     if sum(text.count(f'[{name}]') for name in CHANNELS) != len(list(JOURNAL_LINE.finditer(text))):

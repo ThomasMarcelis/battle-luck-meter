@@ -51,6 +51,9 @@ class AuditTests(unittest.TestCase):
         return lines
 
     def test_complete_nested_session_and_settings_replay(self):
+        self.assertTrue(self.lines)
+        self.assertEqual({match.group(1) for match in audit.JOURNAL_LINE.finditer(self.text)},
+                         {audit.RUNTIME_CHANNEL, audit.UI_CHANNEL})
         status, output = self.replay()
         self.assertEqual(status, 0, output)
         self.assertIn('0 errors, 0 model discrepancies, 0 evidence gaps', output)
@@ -67,13 +70,6 @@ class AuditTests(unittest.TestCase):
         beginner_lucky = next(e for e in entries if e.get('event') == 'attempt' and e.get('battle') == '9')
         self.assertAlmostEqual(float(beginner_lucky['p']), .995)
 
-    def test_current_identity_replays(self):
-        self.assertTrue(self.lines)
-        self.assertTrue(all(line.startswith((f'[{audit.RUNTIME_CHANNEL}]', f'[{audit.UI_CHANNEL}]'))
-                            for line in self.lines))
-        status, output = self.replay()
-        self.assertEqual(status, 0, output)
-        self.assertIn('0 errors, 0 model discrepancies, 0 evidence gaps', output)
 
     def test_allied_cross_faction_attack_is_a_model_discrepancy(self):
         status, output = self.replay(self.change('attempt', 'allied', '1'))
@@ -425,12 +421,14 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(status, 2)
         self.assertIn('no numbered battle', out.getvalue())
 
-    def test_external_runtime_error_is_not_ignored(self):
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            status = audit.audit_journal(self.text+'BattleLuckMeter capture failed: test\n')
-        self.assertEqual(status, 1)
-        self.assertIn('runtime error', out.getvalue())
+    def test_external_runtime_and_ui_errors_are_not_ignored(self):
+        for message in ('Battle Luck Meter capture failed: test', 'Battle Luck Meter UI report failed: test'):
+            with self.subTest(message=message):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    status = audit.audit_journal(self.text + message + '\n')
+                self.assertEqual(status, 1)
+                self.assertIn('runtime error', out.getvalue())
 
     def test_legacy_schema_two_still_replays_and_mixed_schemas_fail(self):
         lines = [

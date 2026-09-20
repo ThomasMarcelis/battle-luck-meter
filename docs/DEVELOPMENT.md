@@ -84,8 +84,8 @@ percentages and colour classes; 0.4.3 `bar_only_v1` receipts reject those fields
 and marker position; 0.4.4 `relative_percent_option_v1` journals keep the conditional badges but render the
 exact figure live. The current UI contract reports `badges="hidden"` or `badges="rendered"`; only rendered
 badges carry percentage and tone fields, weighted on the battle surface and exact on the results surface.
-`tests/audit_test.py` rewrites the emitted journal of a one-attack battle into each earlier contract, so every
-released model keeps replaying under its own semantics rather than being grandfathered in.
+`tests/audit_test.py` rewrites the emitted journal of a one-attack battle into each earlier pre-release contract,
+so every model keeps replaying under its own semantics rather than being grandfathered in.
 Schema 2 retains its original replay path.
 
 The current probability model is `displayed_chance_v2`: Beginner difficulty shifts the first hit check, while
