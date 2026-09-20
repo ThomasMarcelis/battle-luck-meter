@@ -1,6 +1,6 @@
 # Third-party notices
 
-xBro ships only its own MIT-licensed files. Nothing below is redistributed.
+Battle Luck Meter ships only its own MIT-licensed files. Nothing below is redistributed.
 
 - Modern Hooks 0.6.0+ and MSU 1.9.0+ are runtime requirements installed separately by the player.
 - `.tools/mod_msu-1.9.0.zip` (ignored) is the pinned MSU release used by `tests/settings.nut`;

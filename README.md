@@ -1,4 +1,4 @@
-# xBro
+# Battle Luck Meter
 
 A luck meter for Battle Brothers. During a battle a small bar sits under the round counter and shows whether
 the dice have been running for you, against you, or evenly so far.
@@ -32,7 +32,9 @@ The overview also shows net hit swing and attack count. With a full party, scrol
 
 Requires [Modern Hooks](https://www.nexusmods.com/battlebrothers/mods/685) 0.6.0+ and
 [MSU](https://www.nexusmods.com/battlebrothers/mods/479) 1.9.0+. Drop `mod_xbro-<version>.zip` into the game's
-`data` folder. The global visibility and relative-percentage settings are in the MSU settings menu under xBro.
+`data` folder. The global visibility and relative-percentage settings are in the MSU settings menu under
+**Battle Luck Meter**. The technical mod ID and archive prefix remain `mod_xbro` so existing settings and installs
+continue to use the same identity.
 
 ## What it measures
 
@@ -121,6 +123,6 @@ were absent from a live log; the new transport still needs live confirmation.
   alliance and the auditor flags these as model discrepancies.
 - The hook cannot observe the native local roll/threshold, hidden modifiers, or attacks that bypass it.
   DOM receipts verify assigned values, not visual fit. More logging cannot establish those facts by itself.
-- The v0.4.6 Lucky/Beginner correction has not yet been confirmed in-game. Its mathematics, rendering and journal
+- The Lucky/Beginner correction included in 1.0.0 has not yet been confirmed in-game. Its mathematics, rendering and journal
   contract are covered by the offline suites and by replay of v0.4.1-v0.4.5 journals, but the corrected edge case
   still needs a native play session and a ZIP removal/reinstall check before release.

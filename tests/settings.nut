@@ -42,7 +42,9 @@ try
     function test( name, fn ) { try { fn(); } catch (e) { throw name + ": " + e; } count++; print("PASS " + name + "\n"); }
 
     test("registration_requirements_and_ui_files", function() {
-        check(registration.id == "mod_xbro" && registration.version == X.Version && registration.name == X.Name, "registration identity");
+        check(X.ID == "mod_xbro", "technical ID remains compatible with existing settings and installs");
+        check(X.Name == "Battle Luck Meter" && X.Version == "1.0.0", "public product identity");
+        check(registration.id == X.ID && registration.version == X.Version && registration.name == X.Name, "registration identity");
         check(required.len() == 2 && required[0] == "mod_msu >= 1.9.0" && required[1] == "mod_modern_hooks >= 0.6.0", "requirements");
         check(js.len() == 1 && js[0] == "ui/mods/xbro/xbro.js" && css.len() == 1 && css[0] == "ui/mods/xbro/xbro.css", "ui registration");
         local receipt = "[xBroUI] schema=3 ui_seq=1 battle=0 event=ui";

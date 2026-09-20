@@ -1,5 +1,5 @@
 ::XBro <- {
-    ID = "mod_xbro", Name = "xBro", Version = "0.4.6",
+    ID = "mod_xbro", Name = "Battle Luck Meter", Version = "1.0.0",
     Battles = 0, Battle = null, Sequence = 0, Pushes = 0
 };
 
