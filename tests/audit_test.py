@@ -60,7 +60,7 @@ class AuditTests(unittest.TestCase):
         self.assertIn('battle 3:', output)
         self.assertIn('battle 4:', output)
         self.assertIn('You +88%', output)
-        self.assertTrue(any('event=start ' in line and 'version="1.0.0"' in line and
+        self.assertTrue(any('event=start ' in line and 'version="1.0.1"' in line and
                             'model="displayed_chance_v2"' in line and
                             'ui_model="smoothed_percent_option_v1"' in line and 'show_percentages=0' in line
                             for line in self.lines))
@@ -184,7 +184,7 @@ class AuditTests(unittest.TestCase):
     def battle(self, bid):
         return [s for s in self.lines if f' battle={bid} ' in s]
 
-    # Rewrite the emitted 1.0.0 journal of a one-counted-attack battle into an earlier
+    # Rewrite the emitted 1.0.1 journal of a one-counted-attack battle into an earlier
     # released UI contract, so every shipped model keeps replaying under its own semantics.
     EXACT_FIELDS = ('ours_exact_percent', 'ours_exact_tone', 'theirs_exact_percent', 'theirs_exact_tone')
 
@@ -268,12 +268,12 @@ class AuditTests(unittest.TestCase):
 
     def probit_0_4_5(self, lines):
         """0.4.5: current UI semantics with the original shifted-reroll probability model."""
-        return self.renumber([line.replace('version="1.0.0"', 'version="0.4.5"')
+        return self.renumber([line.replace('version="1.0.1"', 'version="0.4.5"')
                               .replace('model="displayed_chance_v2"', 'model="displayed_chance_v1"')
                               for line in lines])
 
     def test_current_ui_receipts_are_conditional_and_reject_badge_tampering(self):
-        self.assertTrue(any('event=start ' in line and 'version="1.0.0"' in line and
+        self.assertTrue(any('event=start ' in line and 'version="1.0.1"' in line and
                             'model="displayed_chance_v2"' in line and
                             'ui_model="smoothed_percent_option_v1"' in line for line in self.lines))
         rendered = [line for line in self.lines if line.startswith(f'[{audit.UI_CHANNEL}]') and 'status="rendered"' in line]

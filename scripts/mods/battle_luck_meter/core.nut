@@ -1,5 +1,5 @@
 ::BattleLuckMeter <- {
-    ID = "mod_battle_luck_meter", Name = "Battle Luck Meter", Version = "1.0.0",
+    ID = "mod_battle_luck_meter", Name = "Battle Luck Meter", Version = "1.0.1",
     Battles = 0, Battle = null, Sequence = 0, Pushes = 0
 };
 

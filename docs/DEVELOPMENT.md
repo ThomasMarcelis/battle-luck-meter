@@ -29,6 +29,12 @@ Schema 3 uses a single session sequence and numbered battles. An `attempt` is wr
 `attackEntity`; every returned call gets a `result`, even when excluded. Attempt IDs follow entry order;
 results follow native return order, so nesting is valid. A counted result gets a full `state` checkpoint.
 Exclusion records contain the inputs read up to that decision; there are no speculative property builds.
+With Legends 19.4.22 installed, its legacy base-class callback rewrites `skill.attackEntity` for each
+derived skill. The meter queues after Legends and registers a subsequent legacy base-class callback that
+wraps the fresh ancestor method; without Legends it keeps the original Modern Hooks path. The Squirrel
+regression checks repeated replacement and exact-once native calls. One 1.0.1 Legends battle recorded 51
+attempts and 51 results, of which 44 counted and 7 were excluded. The auditor found no model discrepancies,
+but cannot establish native hit odds; the screen-close event and removal/reinstall lifecycle remain open.
 
 Battle-owned `mass` starts at `[1.0]` and convolves one Bernoulli trial per counted attack. Favorable means
 an own hit or enemy miss. Summary reads normalize total mass and use inclusive tails, with a 1e-7 tolerance
@@ -102,8 +108,8 @@ An ended, closed battle without a results payload is incomplete evidence.
 screen exit, including abandoned battles. `push` identifies intended state. JS writes `[BattleLuckMeterUI]` observations
 through MSU's existing session connection to Squirrel `logInfo`, with its own monotonic sequence. Native screen teardown disconnects the
 screen's Squirrel handle before destroying DOM; MSU's connection remains available. Origin battle/push IDs
-survive delayed receipts. The previous console transport produced no receipts in a live battle; confirm the
-replacement in the next live journal. Rendered exact result rows, inline marker position, opacity and display
+survive delayed receipts. The previous console transport produced no receipts in an earlier live battle; the 1.0.1 Legends
+results screen did produce correlated receipts. Rendered exact result rows, inline marker position, opacity and display
 value and conditional badge content are checked offline; legacy percentage fields remain model-aware; receipts do not prove
 visible geometry. Destruction of every rendered view is also reported. Views that never receive a push are not independently traced. Missing acknowledgements remain evidence gaps.
 
@@ -127,5 +133,6 @@ results, broken logging/UI, malformed evidence, altered pricing/calculations/con
 ES3 source syntax loading. The Python audit tests consume `tests/sample.nut` output from the real Squirrel
 emitter. Diagnostic captures, source references, reports and generated packages stay in ignored paths.
 
-Standalone evidence cannot establish in-game fit, complete native coverage or install/removal safety. The new
-journal/receipt path still needs live verification; package only as an unverified prerelease until then.
+One live Legends battle establishes in-game capture and results rendering, not accurate Legends odds,
+complete native coverage or install/removal safety. The final screen-close receipt was absent;
+package only as an unverified prerelease until the remaining lifecycle checks pass.

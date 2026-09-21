@@ -33,8 +33,15 @@ The overview also shows net hit swing and attack count. With a full party, scrol
 Requires [Modern Hooks](https://www.nexusmods.com/battlebrothers/mods/685) 0.6.0+ and
 [MSU](https://www.nexusmods.com/battlebrothers/mods/479) 1.9.0+. Drop `mod_battle_luck_meter-<version>.zip` into the game's
 `data` folder. The global visibility and relative-percentage settings are in the MSU settings menu under
-**Battle Luck Meter**. Its technical mod ID and archive prefix are `mod_battle_luck_meter`; this clean 1.0.0 identity has no
+**Battle Luck Meter**. Its technical mod ID and archive prefix are `mod_battle_luck_meter`; the identity introduced in 1.0.0 has no
 install or settings aliases for the internal pre-release name.
+
+Version 1.0.1 includes an experimental capture hook for Legends 19.4.22: it follows Legends' base-skill
+replacement after inheritance, while vanilla continues to use Modern Hooks. In one live Legends battle,
+the 1.0.1 runtime recorded 51 attempts, 7 exclusions and 44 counted attacks; the results screen showed
+the same totals and its log audited with no model discrepancies. The screen-close event and the ZIP
+removal/reinstall lifecycle were not observed. Legends may also change how hit chances are calculated;
+accurate probabilities under Legends have not been established.
 
 ## What it measures
 
@@ -80,7 +87,7 @@ calculation, and compares the rendered text/marker with the state sent by Squirr
 duplicate or inconsistent events and reports absent results, UI receipts and battle boundaries. Exit status
 `0` means the journal checks passed within the stated limits, `1` means invalid evidence or a pricing-model
 or allied-faction sampling discrepancy, and `2` means incomplete evidence. Schema 2 remains covered as an
-arithmetic-only regression fixture; no pre-release identity aliases ship in 1.0.0.
+arithmetic-only regression fixture; no pre-release identity aliases ship.
 
 Schema 3 entries begin `[BattleLuckMeter] schema=3 seq=... battle=... event=...`. Strings are quoted; unsafe bytes use
 `%HH` escapes, decoded once after parsing. Probabilities use nine significant digits. Actor IDs identify
@@ -88,8 +95,9 @@ entities within the session; names are decoration. Squirrel and `[BattleLuckMete
 session sequences. Since 0.3.1, receipts go through MSU's session connection to Squirrel's logger,
 preserving their originating battle and push IDs after tactical UI disconnection. Battle starts identify
 the version, the probability, statistics, marker and UI models, percentage setting, and receipt transport.
-Synthetic fixtures retain the pre-release model semantics for regression coverage. Earlier console-based receipts
-were absent from a live log; the new transport still needs live confirmation.
+Synthetic fixtures retain the pre-release model semantics for regression coverage. Earlier console-based
+receipts were absent from a live log; the current MSU transport produced correlated results receipts in
+the Legends battle above. Screen-close evidence is still missing.
 
 ## What it deliberately does not measure
 

@@ -1,7 +1,34 @@
 ::include("scripts/mods/battle_luck_meter/core");
 ::BattleLuckMeter.Hooks <- ::Hooks.register(::BattleLuckMeter.ID, ::BattleLuckMeter.Version, ::BattleLuckMeter.Name);
 ::BattleLuckMeter.Hooks.require("mod_msu >= 1.9.0", "mod_modern_hooks >= 0.6.0");
-::BattleLuckMeter.Hooks.queue(">mod_msu", function() {
+::BattleLuckMeter.wrapAttack <- function( _original ) {
+    return function( _user, _targetEntity, _allowDiversion = true ) {
+        local trial = null;
+        try { trial = ::BattleLuckMeter.price(this, _user, _targetEntity, _allowDiversion); }
+        catch (error) { ::BattleLuckMeter.fail("capture", error); }
+        local hit;
+        try { hit = _original.call(this, _user, _targetEntity, _allowDiversion); }
+        catch (error) { ::BattleLuckMeter.fail("native_attack", error); throw error; }
+        try { ::BattleLuckMeter.settle(trial, hit); }
+        catch (error) { ::BattleLuckMeter.fail("settle", error); }
+        return hit;
+    };
+};
+::BattleLuckMeter.registerCaptureHook <- function() {
+    if (::Hooks.hasMod("mod_legends"))
+    {
+        // Legends replaces the skill ancestor on each derived-class inheritance.
+        // Register after its legacy callback and wrap the fresh body each time.
+        ::mods_hookBaseClass("skills/skill", function(o) {
+            while (!("m" in o && "ID" in o.m)) o = o[o.SuperName];
+            o.attackEntity = ::BattleLuckMeter.wrapAttack(o.attackEntity);
+        });
+    }
+    else this.Hooks.hook("scripts/skills/skill", function(q) {
+        q.attackEntity = @(__original) ::BattleLuckMeter.wrapAttack(__original);
+    });
+};
+::BattleLuckMeter.Hooks.queue(">mod_msu", ">mod_legends", function() {
     ::BattleLuckMeter.Mod <- ::MSU.Class.Mod(::BattleLuckMeter.ID, ::BattleLuckMeter.Version, ::BattleLuckMeter.Name);
     foreach (file in ["stats", "capture", "ui"]) ::include("scripts/mods/battle_luck_meter/" + file);
     ::MSU.UI.JSConnection.battleLuckMeterLog <- ::BattleLuckMeter.uiReceipt;
@@ -17,19 +44,7 @@
             return data;
         };
     });
-    ::BattleLuckMeter.Hooks.hook("scripts/skills/skill", function(q) {
-        q.attackEntity = @(__original) function( _user, _targetEntity, _allowDiversion = true ) {
-            local trial = null;
-            try { trial = ::BattleLuckMeter.price(this, _user, _targetEntity, _allowDiversion); }
-            catch (error) { ::BattleLuckMeter.fail("capture", error); }
-            local hit;
-            try { hit = __original(_user, _targetEntity, _allowDiversion); }
-            catch (error) { ::BattleLuckMeter.fail("native_attack", error); throw error; }
-            try { ::BattleLuckMeter.settle(trial, hit); }
-            catch (error) { ::BattleLuckMeter.fail("settle", error); }
-            return hit;
-        };
-    });
+    ::BattleLuckMeter.registerCaptureHook();
     ::BattleLuckMeter.Hooks.hook("scripts/states/tactical_state", function(q) {
         q.onInit = @(__original) function() {
             try { ::BattleLuckMeter.begin(); }

@@ -25,14 +25,16 @@ try
     ::MSU.System.ModSettings <- ::MSU.Class.ModSettingsSystem();
     ::MSU.System.ModSettings.Screen = {updateSettingInJS = function( mod, id, value ) {}};
     ::getModSetting <- @(mod, id) ::MSU.System.ModSettings.getPanel(mod).getSetting(id);
-    local hooks = {}, registration = null, queued = null, js = [], css = [], required = null;
+    local hooks = {}, legacy = [], legendsInstalled = false, registration = null, queued = null, queuedOrder = null, js = [], css = [], required = null;
     ::Hooks <- {
+        hasMod = function( id ) { return legendsInstalled && id == "mod_legends"; },
         register = function( id, version, name ) {
             registration = {id = id, version = version, name = name};
-            return {require = function( ... ) { required = vargv; }, queue = function( order, fn ) { queued = fn; },
+            return {require = function( ... ) { required = vargv; }, queue = function( ... ) { queued = vargv.top(); queuedOrder = clone vargv; queuedOrder.pop(); },
                 hook = function( path, fn ) { hooks[path] <- fn; }};
         }, registerLateJS = function( path ) { js.push(path); }, registerCSS = function( path ) { css.push(path); }
     };
+    ::mods_hookBaseClass <- function( name, fn ) { legacy.push({name = name, hook = fn}); };
     ::include <- @(path) dofile(path + ".nut");
     dofile("scripts/!mods_preload/mod_battle_luck_meter.nut");
     if (queued == null || ("summary" in ::BattleLuckMeter)) throw "Modules must load in the queued startup callback";
@@ -43,7 +45,7 @@ try
 
     test("registration_requirements_and_ui_files", function() {
         check(X.ID == "mod_battle_luck_meter", "technical ID uses the clean pre-release identity");
-        check(X.Name == "Battle Luck Meter" && X.Version == "1.0.0", "public product identity");
+        check(X.Name == "Battle Luck Meter" && X.Version == "1.0.1", "public product identity");
         check(registration.id == X.ID && registration.version == X.Version && registration.name == X.Name, "registration identity");
         check(required.len() == 2 && required[0] == "mod_msu >= 1.9.0" && required[1] == "mod_modern_hooks >= 0.6.0", "requirements");
         check(js.len() == 1 && js[0] == "ui/mods/battle_luck_meter/battle_luck_meter.js" && css.len() == 1 && css[0] == "ui/mods/battle_luck_meter/battle_luck_meter.css", "ui registration");
@@ -115,6 +117,30 @@ try
         check(weapon.attackEntity(actor(2), actor(1), false) == false && calls == 2, "explicit argument passes through");
         check(X.Battle.ours.n == 1 && X.Battle.ours.hits == 1 && X.Battle.theirs.n == 1 && X.Battle.theirs.hits == 0, "both sides recorded");
         check(weapon.priced == 2 && ::Errors.len() == 0, "priced via getHitchance without errors");
+    });
+
+    test("legends_replaces_base_attack_on_each_inheritance_without_losing_capture", function() {
+        world(); settings(); X.reset();
+        check(queuedOrder.find(">mod_msu") != null && queuedOrder.find(">mod_legends") != null,
+            "register compatibility hook after Legends' legacy hook when installed");
+        check(legacy.len() == 0, "vanilla install does not add a legacy hook");
+        legendsInstalled = true;
+        X.registerCaptureHook();
+        check(legacy.len() == 1 && legacy[0].name == "skills/skill", "Legends path uses its base-class hook point");
+        local ancestor = skill(70), nativeCalls = 0;
+        ancestor.m.ID <- "actives.test";
+        local derived = {SuperName = "skill", skill = ancestor};
+        foreach (hit in [true, false])
+        {
+            // Legends rewrites the ancestor each time another concrete skill inherits.
+            ancestor.attackEntity <- function( _user, _target, _allowDiversion = true ) { nativeCalls++; return hit; };
+            legacy[0].hook(derived);
+            check(ancestor.attackEntity(actor(1), actor(2)) == hit, "native result is preserved");
+        }
+        check(nativeCalls == 2 && X.Battle.ours.n == 2 && X.Battle.ours.hits == 1,
+            "each inherited skill reaches the final Legends body exactly once");
+        check(X.Battle.attempts == 2 && X.Battle.results == 2 && ::Errors.len() == 0,
+            "each attack gets exactly one attempt and result, not zero or duplicates");
     });
 
     test("battle_lifecycle_resets_and_topbar_pushes", function() {
