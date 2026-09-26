@@ -5,7 +5,7 @@ cases.native_outcome_and_math_bindings_are_logged_without_changing_payloads <- f
     world(); settings(); X.begin();
     local start = fields(::Logs.top());
     check(start.probe_abs == "1" && start.probe_min == "74" && start.probe_max == "74", "integer engine bindings are journaled");
-    check(start.version == X.Version && start.model == "displayed_chance_v2" && start.marker_model == "probit_evidence_weight_v1"
+    check(start.version == X.Version && start.model == "aimed_chance_any_hit_v1" && start.marker_model == "probit_evidence_weight_v1"
         && start.ui_model == "smoothed_percent_option_v1" && start.show_percentages == "0", "start identifies the live UI contracts and default");
     X.finish();
     local native = {result = "win", title = "Victory", subTitle = "The enemy was destroyed in 4 rounds"};

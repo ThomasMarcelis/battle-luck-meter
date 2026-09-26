@@ -40,17 +40,17 @@ cases.only_player_versus_other_factions_count <- function()
     check(trial(skill(80), actor(3), actor(1)).side == "theirs", "any non-player faction attacking us");
 };
 
-cases.ranged_diversion_and_blocked_fire_are_excluded <- function()
+cases.ranged_aim_is_priced_even_with_blockers <- function()
 {
     world();
     local bow = skill(60, true, true);
-    check(trial(bow, actor(1, 4), actor(2), false) == null, "diverted follow-up shot");
+    check(trial(bow, actor(1, 4), actor(2), false) != null, "standalone projectile call remains a shot");
     check(trial(bow, actor(1, 4), actor(2), true) != null, "clear line of fire");
     local handgonne = skill(60, true, false);
-    check(trial(handgonne, actor(1, 4), actor(2), false) != null, "no projectile, no diversion penalty");
+    check(trial(handgonne, actor(1, 4), actor(2), false) != null, "non-projectile ranged call");
     world([{}]);
-    check(trial(bow, actor(1, 4), actor(2), true) == null, "blocked line of fire");
-    check(trial(bow, actor(1, 1), actor(2), true) != null, "adjacent shot never goes astray");
+    check(trial(bow, actor(1, 4), actor(2), true) != null, "blocked aim keeps its original chance");
+    check(trial(bow, actor(1, 1), actor(2), true) != null, "adjacent shot");
     check(trial(skill(60), actor(1, 4), actor(2), true) != null, "melee ignores blockers");
 };
 

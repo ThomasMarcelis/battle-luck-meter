@@ -6,8 +6,7 @@ the dice have been running for you, against you, or evenly so far.
 The bar runs from red on the left (unlucky), through neutral in the centre, to green on the right (lucky), and
 is drawn on a standard-deviation scale: the centre is an average battle and each end is three standard
 deviations away from it. One attack is worth roughly the same number of bar points wherever the marker happens
-to sit, rather than far more near the middle than near the ends, so the bar stops lurching for no visible
-reason. Across 1057 attacks of recorded play its largest single-attack step falls from 10.4 points to 4.9.
+to sit, rather than far more near the middle than near the ends.
 
 The bar begins moving after the first counted attack, including a miss, and is weighted by the evidence behind
 it: half weight at attack 10, three quarters at attack 30, so it moves less per attack while attacks are few.
@@ -17,8 +16,8 @@ Relative hit-percentage badges are optional and off by default. When enabled, th
 hits against expected hits, scaled by how many attacks that side has made, so a single lucky early hit reads
 `+17%` instead of `+186%`. The Statistics screen shows the exact figures.
 
-Hover for actual/expected hits, net hit swing and the exact rarity, such as **Bottom 5% of outcomes at these
-odds** or **Top 5% of outcomes at these odds**. Rarity compares outcomes at the same hit chances and includes
+Hover for actual/expected hits, net hit swing and the exact rarity, such as **Bottom 5% vs aimed odds** or
+**Top 5% vs aimed odds**. Rarity compares outcomes against the original aimed hit chances and includes
 ties; common outcomes read `Even`.
 
 After victory, defeat or retreat, the Statistics tab shows **Battle luck** after the last brother, with the
@@ -45,9 +44,11 @@ accurate probabilities under Legends have not been established.
 
 ## What it measures
 
-Each eligible hit-roll attack is one trial at its priced hit chance. Expected hits are the sum of those
-probabilities per side. Expected hit totals on hover use two decimals. Net hit swing is your hits above
-expectation minus theirs.
+Each eligible shot is one trial at the original aimed target's displayed chance. Hitting that target or
+someone else counts as one hit; hitting nobody counts as one miss. Cover and a diverted follow-up do not
+erase or duplicate the shot. Expected hits sum those aimed chances per side; hover shows two decimals.
+Net hit swing is your hits above that reference minus theirs. This is a score against the chances chosen,
+not the physical probability of hitting anyone at all.
 
 Both surfaces use the probability distribution of your hits plus enemy misses. Inclusive tails measure equally
 unlucky or worse outcomes and equally lucky or better outcomes. If either tail is below 50%, its boundary sets
@@ -67,7 +68,8 @@ of the readout.
 
 Every call through the hooked attack routine is journaled to `Documents/Battle Brothers/log.html`, including
 excluded and disabled calls. Each attempt has an ID, round, actor/skill IDs and names, its exclusion reason or
-all inputs used to price it, including whether the actors are allied. A separate result records the native return; nested attacks retain their own IDs.
+all inputs used to price it, including whether the actors are allied. A separate result records the native return
+and the shot's final hit/miss; a diverted follow-up links to its parent and does not create another sample.
 Every counted result has a checkpoint with hits, expectations, variances, the exact rarity, the mid-p tail and
 its standard-deviation position, evidence weight, marker position, and both the weighted and the exact hit
 percentages, so the smoothed display and the exact figure behind it are separately checkable.
@@ -104,10 +106,12 @@ the Legends battle above. Screen-close evidence is still missing.
 - Damage, injuries, morale checks, or anything other than hit or miss.
 - Skills that do not make hit-roll attacks, forced hits, dead or unattackable targets, and
   unkillable targets at 1 hit point.
-- Ranged shots with a blocked line of fire and diverted follow-up shots, because the chance shown is not the
-  chance rolled.
 - Fights that do not involve your company, and attacks between company members.
 - Anything outside the current battle. The meter resets every fight; the journal retains the session.
+
+## Release status
+
+Version 1.0.2: Tom confirmed Steam Deck testing and authorized publication on 2026-09-26. This is owner-reported runtime acceptance, not a claim that each rare capture or probability edge case has an independently retained live journal. Offline checks cover the shot-level capture and old-journal replay.
 
 ## Limits
 
@@ -117,9 +121,9 @@ the Legends battle above. Screen-close evidence is still missing.
 - A rare engine path with an unclamped hit chance (a defence or skill at -100 or below) is priced at the
   displayed 5-95% range.
 - Luck is measured against the odds the game showed you. It cannot tell you whether those odds were wise.
-- Rarity uses the discrete distribution for the recorded hit chances, assuming independent trials. A verdict
-  names an inclusive tail of that outcome distribution, not a rank among real battles: odds adapt and battles
-  stop depending on outcomes.
+- Rarity compares the shot results against the original aimed chances as independent reference trials. A
+  redirected shot can hit someone at different actual odds, so this is **not** a calibrated probability of
+  hitting anyone or a rank among real battles. Odds adapt and battles stop depending on outcomes.
 - The live bar saturates at ±3 standard deviations: past that point only the evidence weight still moves the
   marker. The verdict, the rarity, the hover detail and the Statistics screen are exact and unaffected.
 - The live bar reads the same distribution more finely than the verdict does, so the two can disagree by a
@@ -132,6 +136,4 @@ the Legends battle above. Screen-close evidence is still missing.
   alliance and the auditor flags these as model discrepancies.
 - The hook cannot observe the native local roll/threshold, hidden modifiers, or attacks that bypass it.
   DOM receipts verify assigned values, not visual fit. More logging cannot establish those facts by itself.
-- The Lucky/Beginner correction included in 1.0.0 has not yet been confirmed in-game. Its mathematics, rendering and journal
-  contract are covered by the offline suites and synthetic pre-release model fixtures, but the corrected edge case
-  still needs a native play session and a ZIP removal/reinstall check before release.
+- The Lucky/Beginner correction and 1.0.2 covered/diverted-shot edge cases have offline regression coverage. Tom has accepted the release after Steam Deck testing; no separately retained live journal isolates those particular edge cases or the ZIP removal/reinstall lifecycle.

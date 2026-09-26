@@ -106,7 +106,7 @@
         // Round group sizes up, allowing only float noise at integer boundaries.
         local tail = rarity < 50.0 ? lower : upper;
         local group = ::Math.max(1, ::Math.ceil(100.0 * tail - 0.0001).tointeger());
-        text = (rarity < 50.0 ? "Bottom " : "Top ") + group + "% of outcomes at these odds";
+        text = (rarity < 50.0 ? "Bottom " : "Top ") + group + "% vs aimed odds";
     }
     return {n = n, rarity = rarity, midp = midp, z = z, weight = weight,
         marker = 50.0 + this.SIGMA_SCALE * z * weight,

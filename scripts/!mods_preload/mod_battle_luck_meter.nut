@@ -3,13 +3,24 @@
 ::BattleLuckMeter.Hooks.require("mod_msu >= 1.9.0", "mod_modern_hooks >= 0.6.0");
 ::BattleLuckMeter.wrapAttack <- function( _original ) {
     return function( _user, _targetEntity, _allowDiversion = true ) {
+        local meter = ::BattleLuckMeter, parent = null, stack = meter.Battle.shots;
+        // Native miss diversion calls this same skill with _allowDiversion=false.
+        // Other re-entrant attacks still get their own sample.
+        if (!_allowDiversion) for (local i = stack.len() - 1; i >= 0; i--)
+            if (stack[i].skill == this && stack[i].user == _user && stack[i].trial != null)
+            { parent = stack[i]; break; }
         local trial = null;
-        try { trial = ::BattleLuckMeter.price(this, _user, _targetEntity, _allowDiversion); }
+        try { trial = meter.price(this, _user, _targetEntity, _allowDiversion, parent); }
         catch (error) { ::BattleLuckMeter.fail("capture", error); }
+        local frame = {skill = this, user = _user, trial = trial, hit = false};
+        stack.push(frame);
         local hit;
         try { hit = _original.call(this, _user, _targetEntity, _allowDiversion); }
-        catch (error) { ::BattleLuckMeter.fail("native_attack", error); throw error; }
-        try { ::BattleLuckMeter.settle(trial, hit); }
+        catch (error) { stack.pop(); ::BattleLuckMeter.fail("native_attack", error); throw error; }
+        stack.pop();
+        frame.hit = frame.hit || hit == true;
+        if (parent != null) parent.hit = parent.hit || frame.hit;
+        try { meter.settle(trial, hit, frame.hit); }
         catch (error) { ::BattleLuckMeter.fail("settle", error); }
         return hit;
     };

@@ -49,7 +49,7 @@ function session() {
 }
 
 const luck = {battle: 1, push: 1, surface: 'results', enabled: true, show_percentages: false, marker: 89.5, emphasis: 1, ours_percent: '+50%', theirs_percent: '-25%', ours_tone: 'good', theirs_tone: 'good',
-    text: 'Top 11% of outcomes at these odds', swing: 'Net hit swing: 3.00 hits in your favour.', sample: 'Counted attacks: 16.', ours: 'You: 6 hits vs 4.00 expected', theirs: 'Enemy: 3 hits vs 4.00 expected'};
+    text: 'Top 11% vs aimed odds', swing: 'Net hit swing: 3.00 hits in your favour.', sample: 'Counted attacks: 16.', ours: 'You: 6 hits vs 4.00 expected', theirs: 'Enemy: 3 hits vs 4.00 expected'};
 
 test('six, twelve and sixteen brothers retain native data across result reloads', () => {
     const s = session();

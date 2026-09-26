@@ -36,7 +36,7 @@ cases.tooltip_prioritises_rarity_and_keeps_detail_concise <- function()
     check(rows[2].text == "You: 0/1 hits vs 0.95 expected", "precise expected hits");
     check(rows[3].text == "Enemy: 0/0 hits vs 0.00 expected", "empty side stays concise");
     check(rows[4].text == "Net: 0.95 hits against you." && rows[5].text == "Small sample: 1 attack counted.", "concise context");
-    check(near(s.marker, 47.030373, 0.0002) && rows[1].text == "Bottom 5% of outcomes at these odds", "tooltip header is the exact tail, bar is weighted");
+    check(near(s.marker, 47.030373, 0.0002) && rows[1].text == "Bottom 5% vs aimed odds", "tooltip header is the exact tail, bar is weighted");
     feed("theirs", array(9, 50), array(9, 0));
     rows = X.tooltip();
     check(rows[3].text == "Enemy: 0/9 hits vs 4.50 expected" && rows[5].text == "10 attacks counted.", "misses end warm-up too");
@@ -51,7 +51,7 @@ cases.result_payload_uses_completed_battle_and_shows_the_exact_tail <- function(
     check(data.enabled && data.show_percentages && data.ours_percent == "+100%" && data.theirs_percent == "—", "results readouts are exact, not weighted");
     check(live.ours_percent == "+17%" && live.ours_tone == "good", "the live badge for the same battle is weighted");
     check(near(live.marker, 53.195591, 0.0002) && near(live.emphasis, 0.6, 0.00001), "live bar is on the sigma axis and warming");
-    check(data.marker == 75.0 && data.emphasis == 1.0 && data.text == "Top 25% of outcomes at these odds", "overview shows the raw tail at full emphasis");
+    check(data.marker == 75.0 && data.emphasis == 1.0 && data.text == "Top 25% vs aimed odds", "overview shows the raw tail at full emphasis");
     check(data.swing == "Net hit swing: 1.00 hits in your favour." && data.sample == "Small sample: 2 attacks.", "overview context without damping claims");
     check(data.text == X.tooltip()[1].text, "result and tooltip share undamped rarity");
     check(data.ours == "You: 2 hits vs 1.00 expected" && data.theirs == "Enemy: 0 hits vs 0.00 expected", "concise final hit totals");

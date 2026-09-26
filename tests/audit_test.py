@@ -19,8 +19,7 @@ class AuditTests(unittest.TestCase):
         if run.stderr or 'event=end' not in run.stdout:
             raise AssertionError(run.stderr or run.stdout)
         cls.text = run.stdout
-        cls.lines = [(m.group(1),m.group(2)) for m in audit.JOURNAL_LINE.finditer(cls.text)]
-        cls.lines = ['['+channel+'] '+fields for channel,fields in cls.lines]
+        cls.lines = ['['+m.group(1)+'] '+m.group(2) for m in audit.JOURNAL_LINE.finditer(cls.text)]
 
     def replay(self, lines=None):
         text = self.text if lines is None else '\n'.join(lines)+'\n'
@@ -60,8 +59,8 @@ class AuditTests(unittest.TestCase):
         self.assertIn('battle 3:', output)
         self.assertIn('battle 4:', output)
         self.assertIn('You +88%', output)
-        self.assertTrue(any('event=start ' in line and 'version="1.0.1"' in line and
-                            'model="displayed_chance_v2"' in line and
+        self.assertTrue(any('event=start ' in line and 'version="1.0.2"' in line and
+                            'model="aimed_chance_any_hit_v1"' in line and
                             'ui_model="smoothed_percent_option_v1"' in line and 'show_percentages=0' in line
                             for line in self.lines))
         entries, errors = audit.journal(self.text)
@@ -69,6 +68,73 @@ class AuditTests(unittest.TestCase):
         self.assertTrue(any(e.get('on') == 'A" p=0 x="<>&%\n\\' for e in entries))
         beginner_lucky = next(e for e in entries if e.get('event') == 'attempt' and e.get('battle') == '9')
         self.assertAlmostEqual(float(beginner_lucky['p']), .995)
+
+    def test_blocked_aim_and_follow_up_are_one_sample_at_original_chance(self):
+        entries, errors = audit.journal(self.text)
+        self.assertFalse(errors)
+        battle = max(int(e['battle']) for e in entries if e['event'] == 'start')
+        attempts = [e for e in entries if e['event'] == 'attempt' and int(e['battle']) == battle]
+        results = [e for e in entries if e['event'] == 'result' and int(e['battle']) == battle]
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual((attempts[0]['chance'], attempts[0]['p'], attempts[0]['reason'], attempts[0]['blockers']),
+                         ('11', '0.109999999', 'counted', '1'))
+        self.assertEqual((attempts[1]['reason'], attempts[1]['parent_attempt']), ('diverted', '1'))
+        self.assertEqual([(e['attempt'], e['native_hit'], e['hit'], e['counted']) for e in results],
+                         [('2', '1', '1', '0'), ('1', '0', '1', '1')])
+        status, output = self.replay()
+        self.assertEqual(status, 0, output)
+
+    def test_diverted_hit_evidence_cannot_be_forged_or_repriced_as_an_old_model(self):
+        entries, _ = audit.journal(self.text)
+        battle = max(int(e['battle']) for e in entries if e['event'] == 'start')
+        nested = next(i for i, s in enumerate(self.lines) if f' battle={battle} event=attempt ' in s and 'parent_attempt=' in s)
+        inner_result = next(i for i, s in enumerate(self.lines) if f' battle={battle} event=result ' in s and 'attempt=2 ' in s)
+        root_result = next(i for i, s in enumerate(self.lines) if f' battle={battle} event=result ' in s and 'attempt=1 ' in s)
+        for index, old, new in [(nested, 'parent_attempt=1', 'parent_attempt=999'),
+                                (inner_result, 'native_hit=1', 'native_hit=0'),
+                                (root_result, 'hit=1', 'hit=0')]:
+            with self.subTest(index=index):
+                lines = self.lines.copy()
+                self.assertIn(old, lines[index])
+                lines[index] = lines[index].replace(old, new)
+                status, output = self.replay(lines)
+                self.assertEqual(status, 1, output)
+        lines = [s.replace('model="aimed_chance_any_hit_v1"', 'model="displayed_chance_v2"')
+                 if f' battle={battle} event=start ' in s else s for s in self.lines]
+        status, output = self.replay(lines)
+        self.assertEqual(status, 1, output)
+        root_attempt = next(i for i, s in enumerate(self.lines) if f' battle={battle} event=attempt ' in s and 'attempt=1 ' in s)
+        for index, old, new in [(root_attempt, 'allow_diversion=1', 'allow_diversion=0'),
+                                (root_attempt, 'ranged=1', 'ranged=0'),
+                                (root_result, 'native_hit=0', 'native_hit=1')]:
+            with self.subTest(old=old):
+                lines = self.lines.copy()
+                self.assertIn(old, lines[index])
+                lines[index] = lines[index].replace(old, new)
+                status, output = self.replay(lines)
+                self.assertEqual(status, 1, output)
+
+    def test_start_binds_version_and_probability_contract(self):
+        for key, value in [('version', '"1.0.1"'), ('version', '"999.0"'),
+                           ('stats_model', '"other"'), ('ui_transport', '"other"')]:
+            with self.subTest(key=key, value=value):
+                status, output = self.replay(self.change('start', key, value, battle=10))
+                self.assertEqual(status, 1, output)
+        previous = [s.replace('version="1.0.2"', 'version="1.0.1"')
+                      .replace('model="aimed_chance_any_hit_v1"', 'model="displayed_chance_v2"')
+                      for s in self.battle(8)]
+        previous = self.renumber(previous)
+        status, output = self.replay(previous)
+        self.assertEqual(status, 0, output)
+        status, output = self.replay([s.replace('version="1.0.1"', 'version="1.0.2"') for s in previous])
+        self.assertEqual(status, 1, output)
+
+    def test_old_1_0_1_probability_contract_replays_for_clear_shots(self):
+        lines = [s.replace('version="1.0.2"', 'version="1.0.1"')
+                   .replace('model="aimed_chance_any_hit_v1"', 'model="displayed_chance_v2"')
+                   .replace(' native_hit=1', '').replace(' native_hit=0', '') for s in self.battle(8)]
+        status, output = self.replay(self.renumber(lines))
+        self.assertEqual(status, 0, output)
 
 
     def test_allied_cross_faction_attack_is_a_model_discrepancy(self):
@@ -184,7 +250,7 @@ class AuditTests(unittest.TestCase):
     def battle(self, bid):
         return [s for s in self.lines if f' battle={bid} ' in s]
 
-    # Rewrite the emitted 1.0.1 journal of a one-counted-attack battle into an earlier
+    # Rewrite the emitted 1.0.2 journal of a one-counted-attack battle into an earlier
     # released UI contract, so every shipped model keeps replaying under its own semantics.
     EXACT_FIELDS = ('ours_exact_percent', 'ours_exact_tone', 'theirs_exact_percent', 'theirs_exact_tone')
 
@@ -204,7 +270,8 @@ class AuditTests(unittest.TestCase):
         live, out = 50 + (rarity - 50) * weight, []
         for line in lines:
             line = re.sub(r'version="[^"]*"', f'version="{version}"', line)
-            line = line.replace(' model="displayed_chance_v2"', ' model="displayed_chance_v1"')
+            line = line.replace(' model="aimed_chance_any_hit_v1"', ' model="displayed_chance_v1"')
+            line = line.replace('%25 vs aimed odds', '%25 of outcomes at these odds')
             line = line.replace(' marker_model="probit_evidence_weight_v1"', models[0])
             line = line.replace(' ui_model="smoothed_percent_option_v1"', models[1])
             line = re.sub(r' (' + '|'.join(self.EXACT_FIELDS) + r'|midp|z)=("[^"]*"|\S+)', '', line)
@@ -268,13 +335,14 @@ class AuditTests(unittest.TestCase):
 
     def probit_0_4_5(self, lines):
         """0.4.5: current UI semantics with the original shifted-reroll probability model."""
-        return self.renumber([line.replace('version="1.0.1"', 'version="0.4.5"')
-                              .replace('model="displayed_chance_v2"', 'model="displayed_chance_v1"')
+        return self.renumber([line.replace('version="1.0.2"', 'version="0.4.5"')
+                              .replace('model="aimed_chance_any_hit_v1"', 'model="displayed_chance_v1"')
+                              .replace('%25 vs aimed odds', '%25 of outcomes at these odds')
                               for line in lines])
 
     def test_current_ui_receipts_are_conditional_and_reject_badge_tampering(self):
-        self.assertTrue(any('event=start ' in line and 'version="1.0.1"' in line and
-                            'model="displayed_chance_v2"' in line and
+        self.assertTrue(any('event=start ' in line and 'version="1.0.2"' in line and
+                            'model="aimed_chance_any_hit_v1"' in line and
                             'ui_model="smoothed_percent_option_v1"' in line for line in self.lines))
         rendered = [line for line in self.lines if line.startswith(f'[{audit.UI_CHANNEL}]') and 'status="rendered"' in line]
         hidden = [line for line in rendered if 'badges="hidden"' in line]
@@ -390,10 +458,10 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(status, 0, output)
         self.assertIn('0 errors, 0 model discrepancies, 0 evidence gaps', output)
         self.assertIn('Bottom 5% unluckiest battles', output)
-        # The same runtime values under the current model are not accepted as 0.4.1 evidence and vice versa.
+        # Version binding rejects a 1.0.2 journal masquerading as an earlier marker contract.
         status, output = self.replay(self.renumber([s.replace(' marker_model="probit_evidence_weight_v1"', '') for s in emitted]))
         self.assertEqual(status, 1, output)
-        self.assertIn('marker: wrote 47.0', output)
+        self.assertIn('unsupported marker_model for version 1.0.2', output)
         status, output = self.replay([s.replace('version="0.4.1"', 'version="0.4.2" marker_model="evidence_weight_v1"') for s in legacy])
         self.assertEqual(status, 1, output)
         self.assertIn('weight: wrote 0.1', output)

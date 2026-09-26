@@ -125,6 +125,17 @@ X.begin();
 local luckyFoe = actor(2); luckyFoe.reroll = 10;
 X.settle(X.price(skill(95), actor(1), luckyFoe, true), true);
 X.tooltip(); X.finish(); closeBattle();
+// The aimed-at bro is missed at 11%, but the same projectile hits another bro.
+// Only the aimed shot enters the statistics; the inner native result is evidence.
+::World.Assets.getCombatDifficulty = @() 1;
+::Const.Tactical.Common.getBlockedTiles = @(_a, _b, _f) [{}];
+X.begin();
+local shooter = actor(2, 4), aimed = actor(1), bow = skill(11, true, true);
+local aimedTrial = X.price(bow, shooter, aimed, true);
+local followUp = X.price(bow, shooter, actor(1), false, {trial = aimedTrial});
+X.settle(followUp, true);
+X.settle(aimedTrial, false, true);
+X.tooltip(); X.finish(); closeBattle();
 // Settings outside a closed battle must not require an unavailable topbar receipt.
 ::Tactical.TopbarRoundInformation = null;
 values.Enabled = false;

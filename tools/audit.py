@@ -139,7 +139,7 @@ CHANNELS = {
 JOURNAL_LINE = re.compile(r'\[(' + '|'.join(map(re.escape, CHANNELS)) + r')\] ([^<\n]*)')
 TOKEN = re.compile(r'([a-z_]+)=("[^"\r\n]*"|[^\s"=]+)(?: +|$)')
 BOOLS = {'enabled', 'show_percentages', 'pending', 'allow_diversion', 'target_present', 'alive', 'attackable', 'uses_hitchance',
-         'able_to_die', 'ranged', 'projectile', 'by_controlled', 'on_controlled', 'hit', 'counted', 'ended', 'allied'}
+         'able_to_die', 'ranged', 'projectile', 'by_controlled', 'on_controlled', 'hit', 'native_hit', 'counted', 'ended', 'allied'}
 REQUIRED = {
     'start': 'version model enabled min_attacks',
     'attempt': 'attempt round enabled min_attacks allow_diversion reason skill_id skill by_id by',
@@ -231,7 +231,10 @@ def number(e, key, integer=False):
     return value
 
 
-PRICING_MODELS = {'displayed_chance_v1', 'displayed_chance_v2'}
+PRICING_MODELS = {'displayed_chance_v1', 'displayed_chance_v2', 'aimed_chance_any_hit_v1'}
+VERSION_PRICING = {**dict.fromkeys(('0.4.0', '0.4.1', '0.4.2', '0.4.3', '0.4.4', '0.4.5'), 'displayed_chance_v1'),
+                   **dict.fromkeys(('1.0.0', '1.0.1'), 'displayed_chance_v2'),
+                   '1.0.2': 'aimed_chance_any_hit_v1'}
 
 
 def pricing(e, model='displayed_chance_v1'):
@@ -243,6 +246,8 @@ def pricing(e, model='displayed_chance_v1'):
     flag = lambda k: number(e, k, True) == 1
     if not flag('enabled'):
         return 'disabled', None, None
+    if model == 'aimed_chance_any_hit_v1' and 'parent_attempt' in e:
+        return 'diverted', None, None
     if not flag('target_present'):
         return 'null_target', None, None
     for key, reason in [('alive', 'dead_target'), ('attackable', 'unattackable_target'), ('uses_hitchance', 'no_hitchance')]:
@@ -256,7 +261,7 @@ def pricing(e, model='displayed_chance_v1'):
         return 'outside_sample', None, None
     if e['side'] != ('ours' if ours else 'theirs'):
         raise ValueError('side disagrees with factions')
-    if flag('ranged'):
+    if flag('ranged') and model != 'aimed_chance_any_hit_v1':
         if not flag('allow_diversion') and flag('projectile'):
             return 'diverted', None, None
         if flag('allow_diversion') and number(e, 'distance') > 1 and number(e, 'blockers', True) != 0:
@@ -319,7 +324,7 @@ MARKER_MODELS = {None: 'linear', 'evidence_weight_v1': 'percentile', 'probit_evi
 UI_MODELS = {None: 'always', 'bar_only_v1': 'never', 'relative_percent_option_v1': 'setting',
              'smoothed_percent_option_v1': 'setting'}
 # Versions 0.4.5 and later weight the live badges; every earlier contract rendered the exact figure live.
-Model = namedtuple('Model', 'legacy axis smoothed badges')
+Model = namedtuple('Model', 'legacy axis smoothed badges aimed', defaults=(False,))
 DEFAULT_MODEL = Model(False, 'percentile', False, 'always')
 LEGACY_INTERPRETATION = ("Compared with battles with the same hit chances; equally lucky or unlucky outcomes count too. "
                          "Rarity uses the full calculation, before the bar's early damping.")
@@ -358,7 +363,7 @@ def presentation_v3(s, model=DEFAULT_MODEL):
         group = max(1, math.ceil(min(rarity, 100-rarity)-0.0001))
         side = 'Bottom' if rarity < 50 else 'Top'
         text = (f'{side} {group}% {"unluckiest" if rarity < 50 else "luckiest"} battles' if model.legacy
-                else f'{side} {group}% of outcomes at these odds')
+                else f'{side} {group}% {"vs aimed odds" if model.aimed else "of outcomes at these odds"}')
     out = dict(weight=weight)
     if model.axis == 'probit':
         if 'midp' not in s:
@@ -539,7 +544,8 @@ def audit_journal(text, show_attacks=False):
             bid = number(e, 'battle', True)
             if bid < 0:
                 raise ValueError('negative battle ID')
-            b = battles.setdefault(bid, {'start': None, 'end': None, 'closed': False, 'attempts': {}, 'results': set(), 'attacks': [],
+            b = battles.setdefault(bid, {'start': None, 'end': None, 'closed': False, 'attempts': {}, 'results': set(),
+                                       'shot_hits': {}, 'diverted_parents': set(), 'attacks': [],
                                        'mass': [1.0], 'excluded': 0, 'enabled': None, 'minimum': None, 'states': 0, 'needs_state': False, 'needs_push': False,
                                        'presentation': None, 'model': DEFAULT_MODEL, 'pricing_model': 'displayed_chance_v1', 'show_percentages': None})
             event = e['event']
@@ -554,13 +560,23 @@ def audit_journal(text, show_attacks=False):
                     raise ValueError('duplicate/late battle start')
                 if e['model'] not in PRICING_MODELS:
                     raise ValueError('unsupported probability model')
+                if v3:
+                    if e['version'] not in VERSION_PRICING or e['model'] != VERSION_PRICING[e['version']]:
+                        raise ValueError('unsupported version/probability model pairing')
+                    if e['version'].startswith('1.0.'):
+                        for field, value in [('stats_model', 'favorable_poisson_binomial_v1'),
+                                             ('marker_model', 'probit_evidence_weight_v1'),
+                                             ('ui_model', 'smoothed_percent_option_v1'),
+                                             ('ui_transport', 'msu_connection_v1')]:
+                            if e.get(field) != value:
+                                raise ValueError(f'unsupported {field} for version {e["version"]}')
                 if e.get('marker_model') not in MARKER_MODELS:
                     raise ValueError('unsupported marker model')
                 if e.get('ui_model') not in UI_MODELS:
                     raise ValueError('unsupported UI model')
                 axis = MARKER_MODELS[e.get('marker_model')]
                 b['model'] = Model(axis == 'linear', axis, e.get('ui_model') == 'smoothed_percent_option_v1',
-                                   UI_MODELS[e.get('ui_model')])
+                                   UI_MODELS[e.get('ui_model')], e['model'] == 'aimed_chance_any_hit_v1')
                 b['pricing_model'] = e['model']
                 b['start'] = e
             if event in ('start', 'settings'):
@@ -588,6 +604,16 @@ def audit_journal(text, show_attacks=False):
                 reason, p, reference = pricing(e, b['pricing_model'])
                 if e['reason'] != reason:
                     raise ValueError(f'exclusion: wrote {e["reason"]}, derived {reason}')
+                if b['pricing_model'] == 'aimed_chance_any_hit_v1' and 'parent_attempt' in e:
+                    parent_id = number(e, 'parent_attempt', True)
+                    if parent_id not in b['attempts'] or parent_id >= aid or e['allow_diversion'] != '0':
+                        raise ValueError('invalid diverted parent')
+                    parent = b['attempts'][parent_id]
+                    if e['by_id'] != parent['by_id'] or e['skill_id'] != parent['skill_id']:
+                        raise ValueError('diverted attack changed shooter or skill')
+                    if parent.get('ranged') != '1' or parent['allow_diversion'] != '1':
+                        raise ValueError('diverted attack needs a ranged parent allowing diversion')
+                    b['diverted_parents'].add(parent_id)
                 if e.get('target_present') == '1' and ('on_id' not in e or 'on' not in e):
                     raise ValueError('missing target identity')
                 if p is not None:
@@ -610,6 +636,17 @@ def audit_journal(text, show_attacks=False):
                 attempt = b['attempts'][aid]
                 counted = attempt['reason'] == 'counted'
                 verify_fields(e, {'result_type': 'bool', 'counted': int(counted)})
+                if b['pricing_model'] == 'aimed_chance_any_hit_v1':
+                    native = number(e, 'native_hit', True)
+                    if aid in b['diverted_parents'] and native:
+                        raise ValueError('aimed attack hit natively despite a diverted follow-up')
+                    shot_hit = int(bool(native or b['shot_hits'].get(aid, 0)))
+                    verify_fields(e, {'hit': shot_hit})
+                    if 'parent_attempt' in attempt:
+                        parent_id = number(attempt, 'parent_attempt', True)
+                        if parent_id in b['results']:
+                            raise ValueError('diverted result after parent settled')
+                        b['shot_hits'][parent_id] = int(bool(shot_hit or b['shot_hits'].get(parent_id, 0)))
                 if counted:
                     b['attacks'].append(dict(attempt, hit=e['hit']))
                     if v3:
@@ -832,7 +869,7 @@ def audit_journal(text, show_attacks=False):
             print(f'{label}: {finding}')
     print(f'journal: {len(entries)} events, {len(errors)} errors, {len(models)} model discrepancies, {len(incomplete)} evidence gaps')
     print('LIMIT: reference pricing assumes ordinary clamped engine thresholds; native dice/hidden modifiers and attacks bypassing this hook are unobserved.')
-    print('LIMIT: rarity is an inclusive tail of outcomes at the recorded odds, not a rank among battles (schema 2 uses a normal approximation); UI receipts confirm DOM assignment, not visible fit or a full install/removal lifecycle.')
+    print('LIMIT: rarity is an inclusive tail against recorded reference odds, not a rank among battles (schema 2 uses a normal approximation); UI receipts confirm DOM assignment, not visible fit or a full install/removal lifecycle.')
     if not entries:
         return 1
     return 1 if errors or models else 2 if incomplete else 0

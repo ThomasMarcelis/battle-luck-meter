@@ -191,11 +191,11 @@ cases.existing_battle_reports_hit_deficits_and_conservative_rarity_group <- func
     check(s.ours.tone == "bad" && s.theirs.tone == "bad", "both hurt the player");
     check(near(s.swing, -2.6, 0.00001) && near(s.rarity, 20.2055, 0.0001), "net swing and exact rarity");
     check(near(s.midp, 0.155647195, 0.0000001) && near(s.marker, 37.68528, 0.0002), "mid-p tail is about one sigma against");
-    check(s.text == "Bottom 21% of outcomes at these odds", "round group upward");
+    check(s.text == "Bottom 21% vs aimed odds", "round group upward");
     X.reset(); X.record("ours", 0.95, false);
-    check(X.summary().text == "Bottom 5% of outcomes at these odds", "float drift must not enlarge an integer group");
+    check(X.summary().text == "Bottom 5% vs aimed odds", "float drift must not enlarge an integer group");
     X.reset(); feed("ours", array(10, 5), array(10, 1));
-    check(X.summary().text == "Top 1% of outcomes at these odds", "minimum displayed group");
+    check(X.summary().text == "Top 1% vs aimed odds", "minimum displayed group");
 };
 
 cases.long_battle_normalizes_float_drift_and_stays_finite <- function()

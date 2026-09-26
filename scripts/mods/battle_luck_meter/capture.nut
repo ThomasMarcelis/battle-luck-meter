@@ -1,8 +1,11 @@
 // Keep evidence at the same boundary as each decision. No extra property builds or
 // dice are needed: these are the inputs the meter already reads, not live-actor dumps.
-::BattleLuckMeter.classify <- function( _skill, _user, _target, _allowDiversion, _e = null )
+::BattleLuckMeter.classify <- function( _skill, _user, _target, _allowDiversion, _e = null, _parent = null )
 {
     local e = _e == null ? {} : _e;
+    // The recursive hit check after a miss belongs to the aimed shot. Its native
+    // result is retained for the parent, never priced as another projectile.
+    if (_parent != null) { e.reason <- "diverted"; return null; }
     e.target_present <- _target != null;
     e.reason <- "null_target";
     if (_target == null) return null;
@@ -32,16 +35,11 @@
     if (e.ranged)
     {
         e.projectile <- _skill.m.IsShowingProjectile;
-        e.reason = "diverted";
-        if (!_allowDiversion && e.projectile) return null;
         local userTile = _user.getTile(), targetTile = _target.getTile();
         e.distance <- userTile.getDistanceTo(targetTile);
         if (_allowDiversion && e.distance > 1)
-        {
             e.blockers <- ::Const.Tactical.Common.getBlockedTiles(userTile, targetTile, e.by_faction).len();
-            e.reason = "blocked";
-            if (e.blockers != 0) return null;
-        }
+        // Price the original aim even through cover; a stray hit is this shot's hit.
     }
     e.chance <- _skill.getHitchance(_target);
     e.chance_type <- typeof e.chance;
@@ -78,11 +76,12 @@
 
 // An attempt is written BEFORE the native call, including excluded calls. Its result
 // follows afterwards and refers to the same ID even if native calls nest/re-enter.
-::BattleLuckMeter.price <- function( _skill, _user, _target, _allowDiversion )
+::BattleLuckMeter.price <- function( _skill, _user, _target, _allowDiversion, _parent = null )
 {
     this.Battle.attempts++;
     local trial = {battle = this.Battle, attempt = this.Battle.attempts, sample = null};
     local e = {attempt = trial.attempt, allow_diversion = _allowDiversion, reason = "capture_error"};
+    if (_parent != null) e.parent_attempt <- _parent.trial.attempt;
     this.identify(e, "skill", _skill); this.identify(e, "by", _user); this.identify(e, "on", _target);
     try { e.round <- ::Time.getRound(); }
     catch (error) { this.fail("round", error); }
@@ -91,16 +90,17 @@
         e.enabled <- this.enabled();
         if (this.Battle.ended) e.reason = "after_end";
         else if (!e.enabled) e.reason = "disabled";
-        else trial.sample = this.classify(_skill, _user, _target, _allowDiversion, e);
+        else trial.sample = this.classify(_skill, _user, _target, _allowDiversion, e, _parent);
     }
     catch (error) { e.reason = "capture_error"; this.fail("capture", error); }
     this.log("attempt", e);
     return trial;
 };
 
-::BattleLuckMeter.settle <- function( _trial, _hit )
+::BattleLuckMeter.settle <- function( _trial, _hit, _shotHit = null )
 {
     if (_trial == null) return;
+    if (_shotHit == null) _shotHit = _hit;
     if (_trial.battle != this.Battle)
     {
         this.fail("settle", "stale battle=" + _trial.battle.id + " attempt=" + _trial.attempt);
@@ -114,13 +114,13 @@
         if (this.Battle.ended) this.fail("settle", "result after battle end");
         else if (_trial.sample != null)
         {
-            this.record(_trial.sample.side, _trial.sample.p, _hit == true);
+            this.record(_trial.sample.side, _trial.sample.p, _shotHit == true);
             counted = true;
         }
         else this.Battle.excluded++;
     }
     catch (error) { this.fail("update", error); }
-    this.log("result", {attempt = _trial.attempt, hit = _hit == true, result_type = typeof _hit,
+    this.log("result", {attempt = _trial.attempt, hit = _shotHit == true, native_hit = _hit == true, result_type = typeof _hit,
         counted = counted, attack = this.Battle.ours.n + this.Battle.theirs.n});
     if (counted)
     {

@@ -1,5 +1,9 @@
 # Development
 
+## Release acceptance
+
+Tom confirmed Steam Deck testing and authorized publication of 1.0.2 on 2026-09-26. Record this as owner-reported runtime acceptance, not independent journal proof of each covered/diverted-shot or Lucky/Beginner edge case. Release preparation changes documentation only; runtime bytes remain those of the tested candidate.
+
 Squirrel owns capture, validation, statistics, settings and tooltip content. JavaScript renders pushed state
 and reports observed DOM values; receipts never update game or meter state.
 
@@ -29,6 +33,11 @@ Schema 3 uses a single session sequence and numbered battles. An `attempt` is wr
 `attackEntity`; every returned call gets a `result`, even when excluded. Attempt IDs follow entry order;
 results follow native return order, so nesting is valid. A counted result gets a full `state` checkpoint.
 Exclusion records contain the inputs read up to that decision; there are no speculative property builds.
+Since 1.0.2, an aimed ranged attack is priced at the original displayed chance even through cover. Its
+recursive diverted `attackEntity` call carries `parent_attempt`, remains excluded as a separate sample,
+and propagates any hit to the root shot; the root result logs both `native_hit` and the aggregated `hit`.
+The `aimed_chance_any_hit_v1` model measures the player's selected risk, not the physical probability of
+striking any actor. Older `displayed_chance_v1/v2` journals retain their prior blocked/diverted exclusions.
 With Legends 19.4.22 installed, its legacy base-class callback rewrites `skill.attackEntity` for each
 derived skill. The meter queues after Legends and registers a subsequent legacy base-class callback that
 wraps the fresh ancestor method; without Legends it keeps the original Modern Hooks path. The Squirrel
@@ -94,12 +103,13 @@ badges carry percentage and tone fields, weighted on the battle surface and exac
 so every model keeps replaying under its own semantics rather than being grandfathered in.
 Schema 2 retains its original replay path.
 
-The current probability model is `displayed_chance_v2`: Beginner difficulty shifts the first hit check, while
-a Lucky target's fresh reroll uses the unshifted displayed chance, matching the native attack routine's order.
-The auditor retains `displayed_chance_v1` to replay older journals and separately compares the ordinary
+The current probability model is `aimed_chance_any_hit_v1`: it retains `displayed_chance_v2`'s pricing of
+Beginner difficulty's first hit check and the Lucky target's unshifted fresh reroll, but judges each aimed shot
+by whether any actor was hit. The auditor retains both earlier pricing models and separately compares the ordinary
 integer-die reference. Discrepancies fail the audit instead of silently changing gameplay presentation. It
 cannot inspect the native local threshold, future dice or unhooked/mod-replaced attack paths. Rarity assumes
-independent trials at the recorded odds; actual battle length and later odds depend on outcomes.
+independent reference trials at the original aimed odds, not the actual chance of hitting anyone; actual
+battle length and later odds depend on outcomes.
 
 Both battle and results surfaces publish correlated bar state. Results also report their rendered rarity, side totals, net swing and sample context,
 including every replacement view when the native list reloads. A suppressed disabled result is acknowledged.

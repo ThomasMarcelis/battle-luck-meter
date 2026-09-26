@@ -7,7 +7,7 @@ from zipfile import ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ARTIFACT = ROOT / 'dist' / 'mod_battle_luck_meter-1.0.1.zip'
+ARTIFACT = ROOT / 'dist' / 'mod_battle_luck_meter-1.0.2.zip'
 MEMBERS = {
     'scripts/!mods_preload/mod_battle_luck_meter.nut',
     'scripts/mods/battle_luck_meter/capture.nut',
@@ -28,7 +28,7 @@ class PackageTests(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, 'tools/package.py'], cwd=ROOT, text=True, capture_output=True, check=True)
         self.assertEqual(result.stderr, '')
-        self.assertIn('dist/mod_battle_luck_meter-1.0.1.zip', result.stdout)
+        self.assertIn('dist/mod_battle_luck_meter-1.0.2.zip', result.stdout)
         return ARTIFACT.read_bytes()
 
     def test_archive_is_deterministic_safe_and_source_identical(self):

@@ -1,5 +1,5 @@
 ::BattleLuckMeter <- {
-    ID = "mod_battle_luck_meter", Name = "Battle Luck Meter", Version = "1.0.1",
+    ID = "mod_battle_luck_meter", Name = "Battle Luck Meter", Version = "1.0.2",
     Battles = 0, Battle = null, Sequence = 0, Pushes = 0
 };
 
@@ -59,7 +59,7 @@
 ::BattleLuckMeter.reset <- function()
 {
     this.Battle = {id = this.Battles, ours = this.newSide(), theirs = this.newSide(),
-        mass = [1.0], attempts = 0, results = 0, excluded = 0, errors = 0, ended = false};
+        mass = [1.0], shots = [], attempts = 0, results = 0, excluded = 0, errors = 0, ended = false};
 };
 ::BattleLuckMeter.reset();
 
@@ -67,7 +67,7 @@
 {
     this.Battles++;
     this.reset();
-    this.log("start", {version = this.Version, model = "displayed_chance_v2",
+    this.log("start", {version = this.Version, model = "aimed_chance_any_hit_v1",
         stats_model = "favorable_poisson_binomial_v1", marker_model = "probit_evidence_weight_v1", ui_model = "smoothed_percent_option_v1",
         ui_transport = "msu_connection_v1", enabled = this.enabled(), show_percentages = this.showPercentages(),
         // Constant-only probes distinguish engine math bindings from local test doubles.
